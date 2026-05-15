@@ -3,75 +3,109 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Earth Tone Professional Theme */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  /* Core backgrounds */
+  --background: #F5F1E8;
+  --foreground: #2C241B;
+  --card: #EDE8E0;
+  --card-foreground: #2C241B;
+  --popover: #EDE8E0;
+  --popover-foreground: #2C241B;
+  
+  /* Primary (warm sand button) */
+  --primary: #C4A77D;
+  --primary-foreground: #2C241B;
+  
+  /* Secondary (muted) */
+  --secondary: #D4CFC6;
+  --secondary-foreground: #2C241B;
+  
+  /* Muted */
+  --muted: #E0DCD4;
+  --muted-foreground: #6B5B4F;
+  
+  /* Accent */
+  --accent: #D4CFC6;
+  --accent-foreground: #2C241B;
+  
+  /* Destructive (terracotta) */
+  --destructive: #B85450;
+  --destructive-foreground: #F5F1E8;
+  
+  /* Borders and inputs */
+  --border: #D4C5B5;
+  --input: #EDE8E0;
+  --ring: #C4A77D;
+  
+  /* Financial colors */
+  --income: #5B8C5A;
+  --expense: #B85450;
+  --warning: #E8A838;
+  
+  /* Progress bar */
+  --progress-empty: #E0DCD4;
+  --progress-filled: #8FA68E;
+  
+  /* Chart colors */
+  --chart-1: #5B8C5A;
+  --chart-2: #B85450;
+  --chart-3: #E8A838;
+  --chart-4: #C4A77D;
+  --chart-5: #8FA68E;
+  
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  
+  /* Sidebar */
+  --sidebar: #EDE8E0;
+  --sidebar-foreground: #2C241B;
+  --sidebar-primary: #C4A77D;
+  --sidebar-primary-foreground: #2C241B;
+  --sidebar-accent: #D4CFC6;
+  --sidebar-accent-foreground: #2C241B;
+  --sidebar-border: #D4C5B5;
+  --sidebar-ring: #C4A77D;
 }
 
+/* Dark variant kept for potential future use */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --background: #F5F1E8;
+  --foreground: #2C241B;
+  --card: #EDE8E0;
+  --card-foreground: #2C241B;
+  --popover: #EDE8E0;
+  --popover-foreground: #2C241B;
+  --primary: #C4A77D;
+  --primary-foreground: #2C241B;
+  --secondary: #D4CFC6;
+  --secondary-foreground: #2C241B;
+  --muted: #E0DCD4;
+  --muted-foreground: #6B5B4F;
+  --accent: #D4CFC6;
+  --accent-foreground: #2C241B;
+  --destructive: #B85450;
+  --destructive-foreground: #F5F1E8;
+  --border: #D4C5B5;
+  --input: #EDE8E0;
+  --ring: #C4A77D;
+  --income: #5B8C5A;
+  --expense: #B85450;
+  --warning: #E8A838;
+  --progress-empty: #E0DCD4;
+  --progress-filled: #8FA68E;
+  --chart-1: #5B8C5A;
+  --chart-2: #B85450;
+  --chart-3: #E8A838;
+  --chart-4: #C4A77D;
+  --chart-5: #8FA68E;
+  --sidebar: #EDE8E0;
+  --sidebar-foreground: #2C241B;
+  --sidebar-primary: #C4A77D;
+  --sidebar-primary-foreground: #2C241B;
+  --sidebar-accent: #D4CFC6;
+  --sidebar-accent-foreground: #2C241B;
+  --sidebar-border: #D4C5B5;
+  --sidebar-ring: #C4A77D;
 }
 
 @theme inline {
@@ -96,6 +130,11 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-income: var(--income);
+  --color-expense: var(--expense);
+  --color-warning: var(--warning);
+  --color-progress-empty: var(--progress-empty);
+  --color-progress-filled: var(--progress-filled);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -121,5 +160,42 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Custom utility classes for financial colors */
+@layer utilities {
+  .text-income {
+    color: var(--income);
+  }
+  .text-expense {
+    color: var(--expense);
+  }
+  .text-warning {
+    color: var(--warning);
+  }
+  .bg-income {
+    background-color: var(--income);
+  }
+  .bg-expense {
+    background-color: var(--expense);
+  }
+  .bg-warning {
+    background-color: var(--warning);
+  }
+  .border-income {
+    border-color: var(--income);
+  }
+  .border-expense {
+    border-color: var(--expense);
+  }
+  .border-warning {
+    border-color: var(--warning);
+  }
+  .shadow-earth {
+    box-shadow: 0 2px 8px rgba(44, 36, 27, 0.08);
+  }
+  .shadow-earth-lg {
+    box-shadow: 0 4px 16px rgba(44, 36, 27, 0.12);
   }
 }

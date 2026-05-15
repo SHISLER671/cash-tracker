@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef } from "react"
+import { RefreshCw, ClipboardList } from "lucide-react"
 import { Transaction } from "@/lib/types"
 import { TransactionGroup } from "./transaction-group"
 import { cn } from "@/lib/utils"
@@ -99,28 +100,10 @@ export function TransactionList({ transactions, onRefresh }: TransactionListProp
         style={{ height: isRefreshing ? 48 : pullDistance }}
       >
         <div className={cn(
-          "flex items-center gap-2 text-zinc-400 transition-opacity",
+          "flex items-center gap-2 text-muted-foreground transition-opacity",
           pullDistance >= REFRESH_THRESHOLD || isRefreshing ? "opacity-100" : "opacity-50"
         )}>
-          <svg
-            className={cn("w-5 h-5", isRefreshing && "animate-spin")}
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
+          <RefreshCw className={cn("w-5 h-5", isRefreshing && "animate-spin")} />
           <span className="text-sm font-medium">
             {isRefreshing ? "Refreshing..." : pullDistance >= REFRESH_THRESHOLD ? "Release to refresh" : "Pull to refresh"}
           </span>
@@ -137,13 +120,11 @@ export function TransactionList({ transactions, onRefresh }: TransactionListProp
           </>
         ) : (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
+            <div className="w-16 h-16 rounded-full bg-card flex items-center justify-center mb-4 shadow-earth">
+              <ClipboardList className="w-8 h-8 text-muted-foreground" />
             </div>
-            <p className="text-zinc-400 font-medium">No transactions yet</p>
-            <p className="text-zinc-600 text-sm mt-1">Tap + to add your first transaction</p>
+            <p className="text-foreground font-medium">No transactions yet</p>
+            <p className="text-muted-foreground text-sm mt-1">Tap + to add your first transaction</p>
           </div>
         )}
       </div>

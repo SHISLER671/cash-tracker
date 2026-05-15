@@ -5,15 +5,17 @@ interface CashDisplayProps {
 }
 
 export function CashDisplay({ amount }: CashDisplayProps) {
+  const isPositive = amount >= 0;
+  
   return (
-    <div className="flex flex-col items-center gap-2 py-8">
+    <div className="flex flex-col items-center gap-3 py-10">
       <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
         Cash on Hand
       </span>
       <div className="flex items-baseline gap-1">
-        <span className="text-2xl font-bold text-emerald-500">$</span>
-        <span className="text-6xl font-bold tabular-nums tracking-tight text-emerald-500 sm:text-7xl">
-          {amount.toLocaleString("en-US", {
+        <span className={`text-3xl font-bold ${isPositive ? 'text-income' : 'text-expense'}`}>$</span>
+        <span className={`text-6xl font-bold tabular-nums tracking-tight sm:text-7xl ${isPositive ? 'text-income' : 'text-expense'}`}>
+          {Math.abs(amount).toLocaleString("en-US", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })}

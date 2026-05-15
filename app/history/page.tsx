@@ -3,6 +3,7 @@
 import { useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
+import { ArrowLeft } from "lucide-react"
 import { db } from "@/lib/db"
 import { Transaction as DbTransaction } from "@/lib/db"
 import { Transaction } from "@/lib/types"
@@ -43,50 +44,38 @@ export default function HistoryPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between p-4 border-b border-zinc-800">
+      <header className="flex items-center justify-between p-4 border-b border-border">
         <button
           onClick={() => router.back()}
-          className="flex items-center justify-center w-10 h-10 rounded-full bg-zinc-800 hover:bg-zinc-700 transition-colors"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-colors hover:bg-secondary"
           aria-label="Go back"
         >
-          <svg
-            className="w-5 h-5 text-zinc-300"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
+          <ArrowLeft className="h-5 w-5" />
         </button>
 
-        <h1 className="text-xl font-bold text-zinc-100">History</h1>
+        <h1 className="text-lg font-bold text-foreground">History</h1>
 
-        <div className="w-10" /> {/* Spacer for centering */}
+        <div className="w-10" />
       </header>
 
       {/* Summary */}
-      <div className="flex items-center justify-center gap-8 p-4 border-b border-zinc-800">
+      <div className="flex items-center justify-center gap-8 p-4 border-b border-border">
         <div className="text-center">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
             Income
           </p>
-          <p className="text-lg font-bold text-emerald-400">
+          <p className="text-lg font-bold text-income">
             +${income.toFixed(2)}
           </p>
         </div>
-        <div className="w-px h-8 bg-zinc-800" />
+        <div className="w-px h-8 bg-border" />
         <div className="text-center">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
             Expenses
           </p>
-          <p className="text-lg font-bold text-red-400">
+          <p className="text-lg font-bold text-expense">
             -${expenses.toFixed(2)}
           </p>
         </div>
