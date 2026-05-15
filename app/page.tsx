@@ -1,5 +1,3 @@
-"use client";
-
 import { CashDisplay } from "@/components/cash-display";
 import { BudgetProgress } from "@/components/budget-progress";
 import { AddButton } from "@/components/add-button";
@@ -15,11 +13,6 @@ const budgets = [
 const cashOnHand = 1247.53;
 
 export default function Home() {
-  const handleAddClick = () => {
-    // TODO: Open add transaction modal
-    console.log("Add transaction clicked");
-  };
-
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-24">
@@ -52,7 +45,7 @@ export default function Home() {
       </main>
 
       {/* Floating Add Button */}
-      <AddButton onClick={handleAddClick} />
+      <AddButton href="/capture" />
     </div>
   );
 }
