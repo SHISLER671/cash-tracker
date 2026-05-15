@@ -15,7 +15,8 @@ type Category = "gas" | "food" | "medical" | "other"
 interface CapturedReceipt {
   imageData: string
   amount: number
-  rawText?: string
+  merchant?: string
+  date?: string
 }
 
 const categoryConfig = {
@@ -42,8 +43,9 @@ export default function CapturePage() {
       // Add to captured receipts even if amount is 0 (user can edit later)
       const receipt: CapturedReceipt = {
         imageData,
-        amount: result.total,
-        rawText: result.rawText,
+        amount: result.amount,
+        merchant: result.merchant,
+        date: result.date,
       }
       
       setCapturedReceipts(prev => [...prev, receipt])
@@ -82,7 +84,7 @@ export default function CapturePage() {
       await addReceiptToInbox({
         imageData: receipt.imageData,
         amount: receipt.amount,
-        rawText: receipt.rawText,
+        merchant: receipt.merchant,
       })
     }
     
