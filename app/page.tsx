@@ -45,7 +45,7 @@ export default function Home() {
       </main>
 
       {/* Floating Add Button */}
-      <AddButton href="/capture" />
+      <AddButton />
     </div>
   );
 }
