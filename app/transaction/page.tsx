@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { X, Check, ArrowLeft } from "lucide-react"
@@ -17,6 +17,34 @@ const categories: { id: Category; label: string; icon: string }[] = [
 const numberPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "del"]
 
 export default function TransactionPage() {
+  return (
+    <Suspense fallback={<TransactionPageSkeleton />}>
+      <TransactionPageContent />
+    </Suspense>
+  )
+}
+
+function TransactionPageSkeleton() {
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="flex items-center justify-between p-4 border-b border-border">
+        <div className="h-11 w-11 rounded-full bg-card animate-pulse" />
+        <div className="h-6 w-20 rounded bg-card animate-pulse" />
+        <div className="w-11" />
+      </header>
+      <div className="flex gap-1 px-4 py-2">
+        <div className="h-1 flex-1 rounded-full bg-muted" />
+        <div className="h-1 flex-1 rounded-full bg-muted" />
+        <div className="h-1 flex-1 rounded-full bg-muted" />
+      </div>
+      <div className="flex-1 flex items-center justify-center">
+        <div className="h-16 w-32 rounded bg-card animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+function TransactionPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState<1 | 2 | 3>(1)
