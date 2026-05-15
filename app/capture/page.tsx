@@ -10,68 +10,39 @@ import { scanReceipt } from "@/lib/ocr"
 import { db } from "@/lib/db"
 
 type CaptureState = "camera" | "processing" | "results"
-
-interface ExtractedAmount {
-  label: string
-  amount: number
-}
+type Category = "gas" | "food" | "medical" | "other"
 
 export default function CapturePage() {
   const router = useRouter()
   const [state, setState] = useState<CaptureState>("camera")
-  const [extractedAmounts, setExtractedAmounts] = useState<ExtractedAmount[]>([])
-  const [totalAmount, setTotalAmount] = useState(0)
+  const [extractedAmount, setExtractedAmount] = useState(0)
 
   const handleCapture = async (imageData: string) => {
     setState("processing")
 
     try {
       const result = await scanReceipt(imageData)
-      
-      const amounts: ExtractedAmount[] = []
-      
-      if (result.amounts.length > 0) {
-        // Show individual amounts found
-        result.amounts.forEach((amt, idx) => {
-          if (amt === result.total) {
-            amounts.push({ label: "Total", amount: amt })
-          } else {
-            amounts.push({ label: `Item ${idx + 1}`, amount: amt })
-          }
-        })
-      }
-      
-      // Ensure total is shown
-      if (!amounts.find(a => a.label === "Total") && result.total > 0) {
-        amounts.push({ label: "Total", amount: result.total })
-      }
-
-      setExtractedAmounts(amounts.length > 0 ? amounts : [{ label: "Total", amount: 0 }])
-      setTotalAmount(result.total)
+      setExtractedAmount(result.total)
       setState("results")
     } catch (error) {
       console.error("OCR failed:", error)
-      // Fallback to manual entry
-      setExtractedAmounts([{ label: "Total", amount: 0 }])
-      setTotalAmount(0)
+      setExtractedAmount(0)
       setState("results")
     }
   }
 
   const handleRetry = () => {
-    setExtractedAmounts([])
-    setTotalAmount(0)
+    setExtractedAmount(0)
     setState("camera")
   }
 
-  const handleConfirm = async () => {
-    if (totalAmount > 0) {
-      // Save as an expense with "other" category - user can edit later
+  const handleConfirm = async (category: Category) => {
+    if (extractedAmount > 0) {
       await db.transactions.add({
         date: new Date(),
-        category: "other",
+        category: category,
         type: "out",
-        amount: totalAmount,
+        amount: extractedAmount,
         note: "Receipt scan",
       })
     }
@@ -108,7 +79,7 @@ export default function CapturePage() {
       <div className="flex-1 flex flex-col relative">
         {state === "results" ? (
           <ExtractedAmounts
-            amounts={extractedAmounts}
+            amount={extractedAmount}
             onConfirm={handleConfirm}
             onRetry={handleRetry}
           />
