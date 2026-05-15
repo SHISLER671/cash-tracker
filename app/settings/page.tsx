@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
-import { ArrowLeft, Plus, Lock, Trash2 } from "lucide-react"
+import { ArrowLeft, Plus, Lock, Trash2, Upload, Download, Users } from "lucide-react"
 import Link from "next/link"
 import { db } from "@/lib/db"
-import { format } from "date-fns"
+import { format, formatDistanceToNow } from "date-fns"
+import { getSyncStatus, pushToPartner, pullFromPartner, getPendingPushCount, type SyncStatus } from "@/lib/supabase/sync"
 
 const categoryIcons: Record<string, string> = {
   gas: "GAS",
@@ -35,6 +36,18 @@ export default function SettingsPage() {
   const currentMonth = format(new Date(), "yyyy-MM")
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({ lastPushed: null, lastPulled: null, pendingCount: 0 })
+  const [isPushing, setIsPushing] = useState(false)
+  const [isPulling, setIsPulling] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
+
+  // Load sync status on mount
+  useEffect(() => {
+    setSyncStatus(getSyncStatus())
+    getPendingPushCount().then(count => {
+      setSyncStatus(prev => ({ ...prev, pendingCount: count }))
+    })
+  }, [])
 
   // Get budgets from database
   const budgets = useLiveQuery(async () => {
@@ -96,6 +109,26 @@ export default function SettingsPage() {
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
     
     await db.transactions.where("date").below(ninetyDaysAgo).delete()
+  }
+
+  const handlePushToPartner = async () => {
+    setIsPushing(true)
+    setSyncMessage(null)
+    const result = await pushToPartner()
+    setIsPushing(false)
+    setSyncStatus(getSyncStatus())
+    setSyncMessage(result.success ? `Shared ${result.count} transactions` : result.error || 'Push failed')
+    setTimeout(() => setSyncMessage(null), 3000)
+  }
+
+  const handlePullFromPartner = async () => {
+    setIsPulling(true)
+    setSyncMessage(null)
+    const result = await pullFromPartner()
+    setIsPulling(false)
+    setSyncStatus(getSyncStatus())
+    setSyncMessage(result.success ? `Received ${result.count} new transactions` : result.error || 'Pull failed')
+    setTimeout(() => setSyncMessage(null), 3000)
   }
 
   const categories = ["gas", "food", "medical", "other"]
@@ -173,6 +206,85 @@ export default function SettingsPage() {
             >
               CLEAR OLD
             </button>
+          </div>
+        </section>
+
+        {/* Partner Sync Section */}
+        <section className="mt-8">
+          <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <Users className="h-4 w-4" />
+            Partner Sync
+          </h2>
+          
+          {syncMessage && (
+            <div className="mb-4 rounded-lg bg-primary/10 px-4 py-2 text-sm text-foreground">
+              {syncMessage}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3">
+            {/* Push to Partner */}
+            <div className="rounded-xl bg-card p-4 shadow-earth">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Upload className="h-5 w-5 text-income" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Share with Partner</p>
+                    <p className="text-xs text-muted-foreground">
+                      {syncStatus.lastPushed 
+                        ? `Last shared: ${formatDistanceToNow(syncStatus.lastPushed, { addSuffix: true })}`
+                        : 'Never shared'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handlePushToPartner}
+                  disabled={isPushing}
+                  className="flex items-center gap-2 rounded-lg bg-income px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+                >
+                  {isPushing ? (
+                    <span className="animate-pulse">SHARING...</span>
+                  ) : (
+                    <>
+                      SHARE
+                      {syncStatus.pendingCount > 0 && (
+                        <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">
+                          {syncStatus.pendingCount}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Pull from Partner */}
+            <div className="rounded-xl bg-card p-4 shadow-earth">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Download className="h-5 w-5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Check for Updates</p>
+                    <p className="text-xs text-muted-foreground">
+                      {syncStatus.lastPulled 
+                        ? `Last checked: ${formatDistanceToNow(syncStatus.lastPulled, { addSuffix: true })}`
+                        : 'Never checked'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handlePullFromPartner}
+                  disabled={isPulling}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+                >
+                  {isPulling ? (
+                    <span className="animate-pulse">CHECKING...</span>
+                  ) : (
+                    'CHECK'
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 

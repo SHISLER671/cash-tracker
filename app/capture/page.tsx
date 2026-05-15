@@ -3,34 +3,53 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, X, RefreshCw, Pencil } from "lucide-react"
+import { ArrowLeft, X, RefreshCw, Pencil, Check, Camera } from "lucide-react"
 import { CameraViewfinder } from "@/components/camera-viewfinder"
-import { ExtractedAmounts } from "@/components/extracted-amounts"
 import { ProcessingOverlay } from "@/components/processing-overlay"
 import { scanReceipt } from "@/lib/ocr"
-import { db } from "@/lib/db"
+import { db, addReceiptToInbox } from "@/lib/db"
 
-type CaptureState = "camera" | "processing" | "results" | "error"
+type CaptureState = "camera" | "processing" | "results" | "error" | "bulk-categorize"
 type Category = "gas" | "food" | "medical" | "other"
+
+interface CapturedReceipt {
+  imageData: string
+  amount: number
+  rawText?: string
+}
+
+const categoryConfig = {
+  gas: { label: "GAS", color: "bg-primary" },
+  food: { label: "FOOD", color: "bg-income" },
+  medical: { label: "MED", color: "bg-expense" },
+  other: { label: "OTHER", color: "bg-muted-foreground" },
+}
 
 export default function CapturePage() {
   const router = useRouter()
   const [state, setState] = useState<CaptureState>("camera")
-  const [extractedAmount, setExtractedAmount] = useState(0)
+  const [capturedReceipts, setCapturedReceipts] = useState<CapturedReceipt[]>([])
   const [errorMessage, setErrorMessage] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
   const handleCapture = async (imageData: string) => {
     setState("processing")
 
     try {
       const result = await scanReceipt(imageData)
-      if (result.total <= 0) {
-        setErrorMessage("Could not read amount from receipt")
-        setState("error")
-        return
+      
+      // Add to captured receipts even if amount is 0 (user can edit later)
+      const receipt: CapturedReceipt = {
+        imageData,
+        amount: result.total,
+        rawText: result.rawText,
       }
-      setExtractedAmount(result.total)
-      setState("results")
+      
+      setCapturedReceipts(prev => [...prev, receipt])
+      
+      // Return to camera for bulk mode
+      setState("camera")
     } catch (error) {
       console.error("OCR failed:", error)
       setErrorMessage("Camera permission denied or OCR failed")
@@ -38,8 +57,15 @@ export default function CapturePage() {
     }
   }
 
+  const handleDone = () => {
+    if (capturedReceipts.length === 0) {
+      router.push("/")
+      return
+    }
+    setState("bulk-categorize")
+  }
+
   const handleRetry = () => {
-    setExtractedAmount(0)
     setErrorMessage("")
     setState("camera")
   }
@@ -48,16 +74,39 @@ export default function CapturePage() {
     router.push("/transaction")
   }
 
-  const handleConfirm = async (category: Category) => {
-    if (extractedAmount > 0) {
-      await db.transactions.add({
-        date: new Date(),
-        category: category,
-        type: "out",
-        amount: extractedAmount,
-        note: "Receipt scan",
+  const handleSaveToInbox = async () => {
+    setIsSaving(true)
+    
+    // Save all receipts to inbox for later categorization
+    for (const receipt of capturedReceipts) {
+      await addReceiptToInbox({
+        imageData: receipt.imageData,
+        amount: receipt.amount,
+        rawText: receipt.rawText,
       })
     }
+    
+    setIsSaving(false)
+    router.push("/inbox")
+  }
+
+  const handleQuickCategorize = async (category: Category) => {
+    setIsSaving(true)
+    
+    // Save all receipts directly as transactions with the selected category
+    for (const receipt of capturedReceipts) {
+      if (receipt.amount > 0) {
+        await db.transactions.add({
+          date: new Date(),
+          category,
+          type: "out",
+          amount: receipt.amount,
+          note: "Receipt scan",
+        })
+      }
+    }
+    
+    setIsSaving(false)
     router.push("/")
   }
 
@@ -71,7 +120,9 @@ export default function CapturePage() {
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-background font-semibold">Capture Receipt</h1>
+        <h1 className="text-background font-semibold">
+          {state === "bulk-categorize" ? "Categorize Receipts" : "Capture Receipts"}
+        </h1>
         <div className="w-11" />
       </header>
 
@@ -106,21 +157,72 @@ export default function CapturePage() {
                   <RefreshCw className="h-5 w-5" />
                   TRY AGAIN
                 </button>
-                <Link
-                  href="/"
-                  className="flex items-center justify-center w-full py-3 text-muted-foreground font-medium transition-colors hover:text-foreground"
-                >
-                  CANCEL
-                </Link>
               </div>
             </div>
           </div>
-        ) : state === "results" ? (
-          <ExtractedAmounts
-            amount={extractedAmount}
-            onConfirm={handleConfirm}
-            onRetry={handleRetry}
-          />
+        ) : state === "bulk-categorize" ? (
+          <div className="flex-1 flex flex-col bg-background p-4">
+            {/* Receipt thumbnails */}
+            <div className="mb-6">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                {capturedReceipts.length} Receipt{capturedReceipts.length !== 1 ? 's' : ''} Captured
+              </h2>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {capturedReceipts.map((receipt, index) => (
+                  <div
+                    key={index}
+                    className="flex-shrink-0 w-20 h-28 rounded-lg bg-card shadow-earth overflow-hidden relative"
+                  >
+                    <img
+                      src={receipt.imageData}
+                      alt={`Receipt ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute bottom-0 inset-x-0 bg-foreground/80 py-1 px-2">
+                      <span className="text-xs font-semibold text-background">
+                        ${receipt.amount.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick categorize all */}
+            <div className="mb-6">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Quick Categorize All
+              </h2>
+              <div className="grid grid-cols-2 gap-3">
+                {(Object.entries(categoryConfig) as [Category, typeof categoryConfig.gas][]).map(
+                  ([cat, config]) => (
+                    <button
+                      key={cat}
+                      onClick={() => handleQuickCategorize(cat)}
+                      disabled={isSaving}
+                      className={`flex items-center justify-center gap-2 py-4 rounded-xl ${config.color} text-white font-semibold transition-all hover:brightness-95 active:scale-98 disabled:opacity-50`}
+                    >
+                      {config.label}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* Or save to inbox */}
+            <div className="mt-auto">
+              <button
+                onClick={handleSaveToInbox}
+                disabled={isSaving}
+                className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-secondary text-foreground font-semibold transition-all hover:bg-muted active:scale-98 disabled:opacity-50"
+              >
+                {isSaving ? "SAVING..." : "SAVE TO INBOX FOR LATER"}
+              </button>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Categorize each receipt individually later
+              </p>
+            </div>
+          </div>
         ) : (
           <>
             <CameraViewfinder
@@ -128,6 +230,28 @@ export default function CapturePage() {
               isProcessing={state === "processing"}
             />
             {state === "processing" && <ProcessingOverlay />}
+            
+            {/* Bulk capture counter and done button */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-foreground via-foreground/90 to-transparent">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {capturedReceipts.length > 0 && (
+                    <div className="flex items-center gap-2 bg-income/20 text-income px-3 py-2 rounded-full">
+                      <Camera className="h-4 w-4" />
+                      <span className="font-semibold">{capturedReceipts.length} receipt{capturedReceipts.length !== 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={handleDone}
+                  disabled={state === "processing"}
+                  className="flex items-center gap-2 bg-income text-white px-6 py-3 rounded-full font-semibold transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+                >
+                  <Check className="h-5 w-5" />
+                  DONE {capturedReceipts.length > 0 && `(${capturedReceipts.length})`}
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>

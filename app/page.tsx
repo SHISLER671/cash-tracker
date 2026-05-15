@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useLiveQuery } from "dexie-react-hooks"
-import { Settings, Clock } from "lucide-react"
+import { Settings, Clock, Inbox } from "lucide-react"
 import { db } from "@/lib/db"
 import { CashDisplay } from "@/components/cash-display"
 import { BudgetProgress } from "@/components/budget-progress"
@@ -24,6 +24,11 @@ export default function Home() {
   // Get transaction count
   const transactionCount = useLiveQuery(async () => {
     return await db.transactions.count()
+  }, [])
+
+  // Get unprocessed receipt count for inbox badge
+  const inboxCount = useLiveQuery(async () => {
+    return await db.receipts.where('processed').equals(0).count()
   }, [])
 
   // Calculate cash on hand from all transactions
@@ -81,13 +86,27 @@ export default function Home() {
             <Settings className="h-5 w-5" />
           </Link>
           <h1 className="text-lg font-bold text-foreground">Cash Tracker</h1>
-          <Link
-            href="/history"
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
-            aria-label="View history"
-          >
-            <Clock className="h-5 w-5" />
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/inbox"
+              className="relative flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
+              aria-label="Receipt inbox"
+            >
+              <Inbox className="h-5 w-5" />
+              {(inboxCount ?? 0) > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-expense text-xs font-bold text-white">
+                  {inboxCount}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/history"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
+              aria-label="View history"
+            >
+              <Clock className="h-5 w-5" />
+            </Link>
+          </div>
         </header>
 
         {isEmpty ? (
