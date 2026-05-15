@@ -29,7 +29,7 @@ export interface Receipt {
   id?: number;
   imageData: string; // Base64 image
   amount: number;
-  rawText?: string;
+  merchant?: string;
   category?: 'gas' | 'food' | 'medical' | 'other';
   processed: boolean;
   createdAt: Date;
