@@ -1,10 +1,13 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { CameraViewfinder } from "@/components/camera-viewfinder"
 import { ExtractedAmounts } from "@/components/extracted-amounts"
 import { ProcessingOverlay } from "@/components/processing-overlay"
-import Link from "next/link"
+import { scanReceipt } from "@/lib/ocr"
+import { db } from "@/lib/db"
 
 type CaptureState = "camera" | "processing" | "results"
 
@@ -14,35 +17,65 @@ interface ExtractedAmount {
 }
 
 export default function CapturePage() {
+  const router = useRouter()
   const [state, setState] = useState<CaptureState>("camera")
   const [extractedAmounts, setExtractedAmounts] = useState<ExtractedAmount[]>([])
+  const [totalAmount, setTotalAmount] = useState(0)
 
-  const handleCapture = async (_imageData: string) => {
+  const handleCapture = async (imageData: string) => {
     setState("processing")
 
-    // Simulate OCR processing
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      const result = await scanReceipt(imageData)
+      
+      const amounts: ExtractedAmount[] = []
+      
+      if (result.amounts.length > 0) {
+        // Show individual amounts found
+        result.amounts.forEach((amt, idx) => {
+          if (amt === result.total) {
+            amounts.push({ label: "Total", amount: amt })
+          } else {
+            amounts.push({ label: `Item ${idx + 1}`, amount: amt })
+          }
+        })
+      }
+      
+      // Ensure total is shown
+      if (!amounts.find(a => a.label === "Total") && result.total > 0) {
+        amounts.push({ label: "Total", amount: result.total })
+      }
 
-    // Simulated extracted amounts
-    const mockAmounts: ExtractedAmount[] = [
-      { label: "Subtotal", amount: 45.99 },
-      { label: "Tax", amount: 3.68 },
-      { label: "Tip", amount: 9.00 },
-    ]
-
-    setExtractedAmounts(mockAmounts)
-    setState("results")
+      setExtractedAmounts(amounts.length > 0 ? amounts : [{ label: "Total", amount: 0 }])
+      setTotalAmount(result.total)
+      setState("results")
+    } catch (error) {
+      console.error("OCR failed:", error)
+      // Fallback to manual entry
+      setExtractedAmounts([{ label: "Total", amount: 0 }])
+      setTotalAmount(0)
+      setState("results")
+    }
   }
 
   const handleRetry = () => {
     setExtractedAmounts([])
+    setTotalAmount(0)
     setState("camera")
   }
 
-  const handleConfirm = () => {
-    // In a real app, this would save to database
-    // For now, just go back to dashboard
-    window.location.href = "/"
+  const handleConfirm = async () => {
+    if (totalAmount > 0) {
+      // Save as an expense with "other" category - user can edit later
+      await db.transactions.add({
+        date: new Date(),
+        category: "other",
+        type: "out",
+        amount: totalAmount,
+        note: "Receipt scan",
+      })
+    }
+    router.push("/")
   }
 
   return (

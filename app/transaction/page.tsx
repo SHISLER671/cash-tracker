@@ -1,12 +1,15 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { db } from "@/lib/db"
 import { InOutToggle } from "@/components/in-out-toggle"
 import { AmountInput } from "@/components/amount-input"
 import { CategoryButtons, type Category } from "@/components/category-buttons"
 
 export default function TransactionPage() {
+  const router = useRouter()
   const [type, setType] = useState<"in" | "out">("out")
   const [amount, setAmount] = useState("")
   const [category, setCategory] = useState<Category | null>(null)
@@ -15,16 +18,22 @@ export default function TransactionPage() {
   const isValid = amount && parseFloat(amount) > 0 && category
 
   const handleSave = async () => {
-    if (!isValid) return
+    if (!isValid || !category) return
 
     setIsSaving(true)
 
-    // Simulate saving
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    // In a real app, this would save to database
-    // For now, just go back to dashboard
-    window.location.href = "/"
+    try {
+      await db.transactions.add({
+        date: new Date(),
+        category,
+        type,
+        amount: parseFloat(amount),
+      })
+      router.push("/")
+    } catch (error) {
+      console.error("Failed to save transaction:", error)
+      setIsSaving(false)
+    }
   }
 
   return (
