@@ -6,118 +6,125 @@ export interface ScanResult {
   date: string
 }
 
-// Common receipt total patterns
-const totalPatterns = [
-  /(?:total|amount|due|balance|grand\s*total|subtotal)\s*[:\s]*\$?\s*(\d+\.?\d*)/gi,
-  /\$\s*(\d+\.\d{2})\s*$/gm,
-  /(\d+\.\d{2})\s*(?:total|due|paid)/gi,
-]
+// === IMAGE PREPROCESSING (this is the magic fix) ===
+async function preprocessImage(imageData: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      const ctx = canvas.getContext("2d")!
+      canvas.width = img.width
+      canvas.height = img.height
 
-// Common merchant name patterns (usually at top of receipt)
-const merchantPatterns = [
-  /^([A-Z][A-Za-z0-9\s&'.-]+)$/m,
-  /welcome\s+to\s+([A-Za-z0-9\s&'.-]+)/i,
-  /thank\s+you\s+for\s+(?:shopping|visiting)\s+(?:at\s+)?([A-Za-z0-9\s&'.-]+)/i,
-]
+      ctx.drawImage(img, 0, 0)
 
-// Date patterns
-const datePatterns = [
-  /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
-  /(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/,
-  /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})/i,
-]
+      // Get pixel data
+      const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageDataObj.data
 
+      // Grayscale + strong contrast boost + light binarization
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11
+        // Boost contrast (makes text pop)
+        const contrasted = Math.min(255, Math.max(0, (gray - 128) * 2.2 + 128))
+        data[i] = data[i + 1] = data[i + 2] = contrasted
+        data[i + 3] = 255
+      }
+
+      ctx.putImageData(imageDataObj, 0, 0)
+      resolve(canvas.toDataURL("image/jpeg", 0.95))
+    }
+    img.src = imageData
+  })
+}
+
+// === IMPROVED EXTRACTION (more forgiving) ===
 const extractAmount = (text: string): number => {
-  // Try each pattern to find amounts
-  const amounts: number[] = []
-  
-  for (const pattern of totalPatterns) {
-    const regex = new RegExp(pattern.source, pattern.flags)
-    let match
-    while ((match = regex.exec(text)) !== null) {
-      const amount = parseFloat(match[1])
-      if (amount > 0 && amount < 10000) {
-        amounts.push(amount)
+  const normalized = text.toUpperCase()
+
+  const patterns = [
+    /TOTAL[^0-9]*(\d+\.\d{2})/i,
+    /AMOUNT[^0-9]*(\d+\.\d{2})/i,
+    /DUE[^0-9]*(\d+\.\d{2})/i,
+    /BALANCE[^0-9]*(\d+\.\d{2})/i,
+    /SUBTOTAL[^0-9]*(\d+\.\d{2})/i,
+    /(\d+\.\d{2})\s*(?:TOTAL|AMOUNT|DUE|PAID|BALANCE|SUBTOTAL)/i,
+    /\$\s*(\d+\.\d{2})/g,
+  ]
+
+  let amounts: number[] = []
+
+  for (const pattern of patterns) {
+    let matches
+    if (pattern.global) {
+      matches = [...normalized.matchAll(pattern)]
+      for (const m of matches) {
+        const amt = parseFloat((m[1] || m[0]).replace(/[^\d.]/g, ""))
+        if (amt > 0 && amt < 10000) amounts.push(amt)
+      }
+    } else {
+      matches = normalized.match(pattern)
+      if (matches) {
+        const amt = parseFloat((matches[1] || matches[0]).replace(/[^\d.]/g, ""))
+        if (amt > 0 && amt < 10000) amounts.push(amt)
       }
     }
   }
-  
-  // Also look for standalone dollar amounts
-  const dollarMatches = text.match(/\$\s*(\d+\.\d{2})/g)
-  if (dollarMatches) {
-    for (const m of dollarMatches) {
-      const amount = parseFloat(m.replace(/[^\d.]/g, ""))
-      if (amount > 0 && amount < 10000) {
-        amounts.push(amount)
-      }
-    }
-  }
-  
-  // Return the largest amount (usually the total)
-  if (amounts.length > 0) {
-    return Math.max(...amounts)
-  }
-  
-  return 0
+
+  return amounts.length > 0 ? Math.max(...amounts) : 0
 }
 
 const extractMerchant = (text: string): string => {
-  // Try to find merchant from first few lines (usually store name is at top)
-  const lines = text.split("\n").filter(line => line.trim().length > 2)
-  
-  // Check first 5 lines for a merchant-like name
+  const lines = text.split("\n").filter((line) => line.trim().length > 2)
   for (let i = 0; i < Math.min(5, lines.length); i++) {
     const line = lines[i].trim()
-    // Skip lines that are mostly numbers or common receipt words
-    if (/^\d/.test(line) || /^(store|receipt|invoice|date|time|#)/i.test(line)) {
-      continue
-    }
-    // Return first reasonable looking name (3+ chars, not all caps numbers)
+    if (/^\d/.test(line) || /^(store|receipt|invoice|date|time|#|total)/i.test(line)) continue
     if (line.length >= 3 && line.length <= 50 && !/^\d+$/.test(line)) {
       return line.replace(/[^\w\s&'.-]/g, "").trim()
     }
   }
-  
-  // Try patterns as fallback
-  for (const pattern of merchantPatterns) {
-    const match = text.match(pattern)
-    if (match && match[1]) {
-      return match[1].trim()
-    }
-  }
-  
   return ""
 }
 
 const extractDate = (text: string): string => {
+  const datePatterns = [
+    /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
+    /(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/,
+    /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})/i,
+  ]
   for (const pattern of datePatterns) {
     const match = text.match(pattern)
-    if (match && match[1]) {
-      return match[1]
-    }
+    if (match && match[1]) return match[1]
   }
   return ""
 }
 
+// === MAIN SCAN FUNCTION ===
 export const scanReceipt = async (imageData: string): Promise<ScanResult> => {
   try {
-    const result = await Tesseract.recognize(imageData, "eng", {
-      logger: () => {}, // Silent logging
+    console.log("🔍 Starting OCR on receipt...")
+
+    const processedImage = await preprocessImage(imageData)
+    console.log("✅ Image preprocessed for OCR")
+
+    const result = await Tesseract.recognize(processedImage, "eng", {
+      logger: (m) => console.log("Tesseract progress:", m),
+      tessedit_pageseg_mode: 6, // uniform block of text (best for receipts)
+      tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz$. /:-",
     })
-    
+
     const text = result.data.text
-    
-    return {
-      amount: extractAmount(text),
-      merchant: extractMerchant(text),
-      date: extractDate(text),
-    }
+    console.log("📄 RAW OCR TEXT:", text) // ← open console to see this!
+
+    const amount = extractAmount(text)
+    const merchant = extractMerchant(text)
+    const date = extractDate(text)
+
+    console.log(`✅ Extracted → $${amount} | ${merchant || "unknown merchant"}`)
+
+    return { amount, merchant, date }
   } catch (error) {
     console.error("OCR failed:", error)
-    return {
-      amount: 0,
-      merchant: "",
-      date: "",
-    }
+    return { amount: 0, merchant: "", date: "" }
   }
 }
