@@ -67,12 +67,12 @@ export default function CapturePage() {
       <header className="flex items-center justify-between p-4 bg-foreground/90 backdrop-blur-sm">
         <Link
           href="/"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-card/20 text-background transition-colors hover:bg-card/30"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-card/20 text-background transition-all hover:bg-card/30 active:scale-95"
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-background font-semibold">Capture Receipt</h1>
-        <div className="w-10" />
+        <div className="w-11" />
       </header>
 
       {/* Main content */}

@@ -240,7 +240,7 @@ export default function TransactionPage() {
       <header className="flex items-center justify-between p-4 border-b border-border">
         <button
           onClick={goBack}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-colors hover:bg-secondary"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
           aria-label="Go back"
         >
           {step === 1 ? <X className="h-5 w-5" /> : <ArrowLeft className="h-5 w-5" />}
@@ -248,7 +248,7 @@ export default function TransactionPage() {
         <h1 className="text-lg font-bold text-foreground">
           {step === 1 ? "Amount" : step === 2 ? "Category" : "Confirm"}
         </h1>
-        <div className="w-10" />
+        <div className="w-11" />
       </header>
 
       {/* Progress Bar */}

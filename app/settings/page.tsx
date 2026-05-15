@@ -107,13 +107,13 @@ export default function SettingsPage() {
         <header className="flex items-center justify-between border-b border-border py-4">
           <button
             onClick={() => router.back()}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-colors hover:bg-secondary"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
             aria-label="Go back"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <h1 className="text-lg font-bold text-foreground">SETTINGS</h1>
-          <div className="w-10" />
+          <div className="w-11" />
         </header>
 
         {/* Monthly Budgets Section */}

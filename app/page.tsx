@@ -75,7 +75,7 @@ export default function Home() {
         <header className="flex items-center justify-between border-b border-border py-4">
           <Link
             href="/settings"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-colors hover:bg-secondary"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
             aria-label="Settings"
           >
             <Settings className="h-5 w-5" />
@@ -83,7 +83,7 @@ export default function Home() {
           <h1 className="text-lg font-bold text-foreground">Cash Tracker</h1>
           <Link
             href="/history"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-colors hover:bg-secondary"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
             aria-label="View history"
           >
             <Clock className="h-5 w-5" />

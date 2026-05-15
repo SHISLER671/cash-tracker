@@ -81,7 +81,7 @@ export function AddButton() {
             <span className="bg-card text-foreground text-sm font-medium px-3 py-1.5 rounded-lg shadow-earth opacity-0 group-hover:opacity-100 transition-opacity">
               Scan Receipt
             </span>
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-foreground shadow-earth transition-all hover:bg-primary active:scale-95">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-foreground shadow-earth transition-all hover:bg-primary hover:text-primary-foreground active:scale-90">
               <Camera className="h-5 w-5" />
             </div>
           </Link>
@@ -93,7 +93,7 @@ export function AddButton() {
             <span className="bg-card text-foreground text-sm font-medium px-3 py-1.5 rounded-lg shadow-earth opacity-0 group-hover:opacity-100 transition-opacity">
               Manual Entry
             </span>
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-foreground shadow-earth transition-all hover:bg-primary active:scale-95">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-foreground shadow-earth transition-all hover:bg-primary hover:text-primary-foreground active:scale-90">
               <Pencil className="h-5 w-5" />
             </div>
           </Link>
@@ -106,12 +106,12 @@ export function AddButton() {
           onTouchEnd={handleTouchEnd}
           onTouchMove={handleTouchMove}
           className={cn(
-            "flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-earth-lg transition-all hover:brightness-95 hover:shadow-xl active:scale-95",
+            "flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-earth-lg transition-all hover:brightness-95 hover:shadow-xl active:scale-90",
             isOpen && "rotate-45"
           )}
           aria-label={isOpen ? "Close menu" : "Add transaction"}
         >
-          <Plus className="h-8 w-8 transition-transform duration-200" strokeWidth={2.5} />
+          <Plus className="h-7 w-7 transition-transform duration-200" strokeWidth={2.5} />
         </button>
       </div>
 
