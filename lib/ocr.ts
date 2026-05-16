@@ -1,148 +1,124 @@
-import Tesseract from "tesseract.js"
+import Tesseract from "tesseract.js" // fallback only
 
 export interface ScanResult {
   amount: number
   merchant: string
   date: string
+  category?: "gas" | "food" | "medical" | "other"
 }
 
-// === STRONGER IMAGE PREPROCESSING (this should finally crack it) ===
-async function preprocessImage(imageData: string): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => {
-      const canvas = document.createElement("canvas")
-      const ctx = canvas.getContext("2d")!
+// Venice API config
+const VENICE_API_URL = "https://api.venice.ai/api/v1/chat/completions"
+const VENICE_MODEL = "qwen3-vl-30b-a3b" // change to "e2ee-qwen3-vl-30b-a3b-p" if you prefer the private TEE version
 
-      // 1. Resize to optimal width for OCR (1200px is the sweet spot for receipts)
-      const MAX_WIDTH = 1200
-      let { width, height } = img
-      if (width > MAX_WIDTH) {
-        const scale = MAX_WIDTH / width
-        width = MAX_WIDTH
-        height = Math.round(height * scale)
-      }
-      canvas.width = width
-      canvas.height = height
-      ctx.drawImage(img, 0, 0, width, height)
+// === AI VISION SCAN (main path) ===
+async function scanWithVenice(imageData: string): Promise<ScanResult> {
+  if (!process.env.NEXT_PUBLIC_VENICE_API_KEY) {
+    throw new Error("No Venice key")
+  }
 
-      // 2. Get pixel data
-      const imageDataObj = ctx.getImageData(0, 0, width, height)
-      const data = imageDataObj.data
+  const base64 = imageData.replace(/^data:image\/\w+;base64,/, "")
 
-      // 3. Grayscale + aggressive contrast + binarization
-      for (let i = 0; i < data.length; i += 4) {
-        // Grayscale
-        let gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114
+  const response = await fetch(VENICE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.NEXT_PUBLIC_VENICE_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: VENICE_MODEL,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `You are an expert receipt scanner. Extract the following from this receipt photo. Return ONLY valid JSON, no extra text.
 
-        // Strong contrast boost
-        gray = Math.min(255, Math.max(0, (gray - 110) * 3 + 110))
+{
+  "amount": number (the total paid, e.g. 42.75),
+  "merchant": string (store name, e.g. "Shell Gas" or "Walmart"),
+  "date": string (in YYYY-MM-DD format if possible, otherwise leave empty),
+  "category": "gas" | "food" | "medical" | "other"
+}
 
-        // Binarization: dark text on white background
-        const threshold = 140
-        const binary = gray < threshold ? 0 : 255
-
-        data[i] = data[i + 1] = data[i + 2] = binary
-        data[i + 3] = 255
-      }
-
-      ctx.putImageData(imageDataObj, 0, 0)
-
-      // Optional: you can uncomment this to see the processed image in console
-      // console.log("🖼️ Processed image ready (copy this base64 if you want to debug):", canvas.toDataURL("image/jpeg", 0.95))
-
-      resolve(canvas.toDataURL("image/jpeg", 0.95))
-    }
-    img.src = imageData
+Be accurate. If you can't find something, use sensible defaults (amount=0, merchant="Unknown", category="other").`,
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:image/jpeg;base64,${base64}`,
+              },
+            },
+          ],
+        },
+      ],
+      temperature: 0.0,
+      max_tokens: 300,
+      response_format: { type: "json_object" },
+    }),
   })
-}
 
-// === EXTRACTION (unchanged but slightly more forgiving) ===
-const extractAmount = (text: string): number => {
-  const normalized = text.toUpperCase()
-  const patterns = [
-    /TOTAL[^0-9]*(\d+\.\d{2})/i,
-    /AMOUNT[^0-9]*(\d+\.\d{2})/i,
-    /DUE[^0-9]*(\d+\.\d{2})/i,
-    /BALANCE[^0-9]*(\d+\.\d{2})/i,
-    /SUBTOTAL[^0-9]*(\d+\.\d{2})/i,
-    /(\d+\.\d{2})\s*(?:TOTAL|AMOUNT|DUE|PAID|BALANCE|SUBTOTAL)/i,
-    /\$\s*(\d+\.\d{2})/g,
-  ]
-
-  let amounts: number[] = []
-  for (const pattern of patterns) {
-    let matches
-    if (pattern.global) {
-      matches = [...normalized.matchAll(pattern)]
-      for (const m of matches) {
-        const amt = parseFloat((m[1] || m[0]).replace(/[^\d.]/g, ""))
-        if (amt > 0 && amt < 10000) amounts.push(amt)
-      }
-    } else {
-      matches = normalized.match(pattern)
-      if (matches) {
-        const amt = parseFloat((matches[1] || matches[0]).replace(/[^\d.]/g, ""))
-        if (amt > 0 && amt < 10000) amounts.push(amt)
-      }
-    }
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(`Venice error: ${response.status} - ${err}`)
   }
-  return amounts.length > 0 ? Math.max(...amounts) : 0
-}
 
-const extractMerchant = (text: string): string => {
-  const lines = text.split("\n").filter((line) => line.trim().length > 3)
-  for (let i = 0; i < Math.min(6, lines.length); i++) {
-    const line = lines[i].trim()
-    if (/^\d|total|amount|due|paid|subtotal|date|time/i.test(line)) continue
-    if (line.length >= 4 && line.length <= 60) {
-      return line.replace(/[^\w\s&'.-]/g, " ").trim()
-    }
+  const data = await response.json()
+  const jsonText = data.choices[0].message.content
+  const parsed = JSON.parse(jsonText)
+
+  return {
+    amount: Number(parsed.amount) || 0,
+    merchant: parsed.merchant || "Unknown",
+    date: parsed.date || "",
+    category: parsed.category || "other",
   }
-  return "Unknown"
 }
 
-const extractDate = (text: string): string => {
-  const patterns = [
-    /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
-    /(\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2})/,
-  ]
-  for (const pattern of patterns) {
-    const match = text.match(pattern)
-    if (match) return match[1]
-  }
-  return ""
-}
-
-// === MAIN SCAN ===
-export const scanReceipt = async (imageData: string): Promise<ScanResult> => {
+// === FALLBACK (Tesseract) if no key or Venice fails ===
+async function scanWithTesseract(imageData: string): Promise<ScanResult> {
+  console.log("Venice not available → falling back to Tesseract")
+  
   try {
-    console.log("🔍 Starting OCR on receipt...")
-
-    const processedImage = await preprocessImage(imageData)
-    console.log("✅ Image preprocessed for OCR (upscaled + binarized)")
-
-    const result = await Tesseract.recognize(processedImage, "eng", {
+    const result = await Tesseract.recognize(imageData, "eng", {
       logger: (m) => {
         if (m.status === "recognizing text") console.log("Tesseract progress:", Math.round(m.progress * 100) + "%")
       },
-      tessedit_pageseg_mode: 4,           // single column of text (best for receipts)
-      tessedit_ocr_engine_mode: 1,        // LSTM only (more accurate)
-      tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz$. /:-,",
     })
 
     const text = result.data.text.trim()
     console.log("📄 RAW OCR TEXT:", text || "(empty)")
 
-    const amount = extractAmount(text)
-    const merchant = extractMerchant(text)
-    const date = extractDate(text)
+    // Basic extraction
+    const amountMatch = text.match(/(\d+\.\d{2})/g)
+    const amounts = amountMatch?.map(Number).filter(n => n > 0 && n < 10000) || []
+    const amount = amounts.length > 0 ? Math.max(...amounts) : 0
 
-    console.log(`✅ Extracted → $${amount} | ${merchant || "unknown"}`)
+    const lines = text.split("\n").filter(line => line.trim().length > 3)
+    const merchant = lines[0]?.trim() || "Unknown"
 
-    return { amount, merchant, date }
+    const dateMatch = text.match(/(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/)
+    const date = dateMatch?.[1] || ""
+
+    return { amount, merchant, date, category: "other" }
   } catch (error) {
-    console.error("OCR failed:", error)
-    return { amount: 0, merchant: "", date: "" }
+    console.error("Tesseract OCR failed:", error)
+    return { amount: 0, merchant: "Unknown", date: "", category: "other" }
+  }
+}
+
+// === MAIN FUNCTION ===
+export const scanReceipt = async (imageData: string): Promise<ScanResult> => {
+  console.log("🔍 Starting AI vision scan on receipt...")
+
+  try {
+    // Try Venice AI first
+    const result = await scanWithVenice(imageData)
+    console.log("✅ Venice AI extracted:", result)
+    return result
+  } catch (error) {
+    console.warn("Venice AI failed, trying Tesseract fallback:", error)
+    return await scanWithTesseract(imageData)
   }
 }
