@@ -5,29 +5,59 @@ export interface Transaction {
   date: Date
   amount: number
   merchant: string
-  category: string          // now free-text
+  category: string
   type: 'in' | 'out'
   note?: string
-  synced?: boolean          // new: helps track local-only changes
+  synced?: boolean
 }
 
+export interface Receipt {
+  id?: number
+  imageData: string
+  amount: number
+  merchant?: string
+  category?: string
+  createdAt: Date
+  processed: number // 0 = unprocessed, 1 = processed
+}
+
+// Create DB
 export const db = new Dexie('CashTracker') as Dexie & {
   transactions: EntityTable<Transaction, 'id'>
+  receipts: EntityTable<Receipt, 'id'>
 }
 
-db.version(2).stores({
-  transactions: '++id, date, amount, category, type, synced'
+// High version number so it safely upgrades your existing DB
+db.version(31).stores({
+  transactions: '++id, date, amount, category, type, synced',
+  receipts: '++id, createdAt, processed'
 })
 
-// Optional: migrate old data
-db.on('ready', async () => {
-  const count = await db.transactions.count()
-  if (count > 0) {
-    await db.transactions.toCollection().modify(t => {
-      if (!t.synced) t.synced = false
-      if (!t.merchant) t.merchant = 'Unknown'
-    })
-  }
-})
+// Receipt helpers (exactly what capture + inbox pages expect)
+export const addReceiptToInbox = async (receipt: Omit<Receipt, 'id' | 'createdAt'>) => {
+  return await db.receipts.add({
+    ...receipt,
+    createdAt: new Date(),
+    processed: 0
+  })
+}
 
-export type { Transaction }
+export const markReceiptProcessed = async (id: number, category: string) => {
+  return await db.receipts.update(id, { processed: 1, category })
+}
+
+export const bulkMarkReceiptsProcessed = async (ids: number[], category: string) => {
+  return await db.receipts.bulkUpdate(
+    ids.map(id => ({ key: id, changes: { processed: 1, category } }))
+  )
+}
+
+export const deleteReceipt = async (id: number) => {
+  return await db.receipts.delete(id)
+}
+
+export const bulkDeleteReceipts = async (ids: number[]) => {
+  return await db.receipts.bulkDelete(ids)
+}
+
+export type { Transaction, Receipt }
