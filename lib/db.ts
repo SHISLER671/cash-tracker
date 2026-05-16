@@ -1,114 +1,63 @@
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable } from 'dexie'
 
 export interface Transaction {
-  id?: number;
-  date: Date;
-  category: 'gas' | 'food' | 'medical' | 'other';
-  type: 'in' | 'out';
-  amount: number;
-  note?: string;
-}
-
-export interface Budget {
-  month: string; // Format: YYYY-MM
-  category: 'gas' | 'food' | 'medical' | 'other';
-  limit: number;
-}
-
-export interface Draft {
-  id?: number;
-  step: 1 | 2 | 3;
-  type: 'in' | 'out';
-  amount: number;
-  category?: 'gas' | 'food' | 'medical' | 'other';
-  note?: string;
-  updatedAt: Date;
+  id?: number
+  date: Date
+  amount: number
+  merchant: string
+  category: string
+  type: 'in' | 'out'
+  note?: string
+  synced?: boolean
 }
 
 export interface Receipt {
-  id?: number;
-  imageData: string; // Base64 image
-  amount: number;
-  merchant?: string;
-  category?: 'gas' | 'food' | 'medical' | 'other';
-  processed: boolean;
-  createdAt: Date;
+  id?: number
+  imageData: string
+  amount: number
+  merchant?: string
+  category?: string
+  createdAt: Date
+  processed: number // 0 = inbox, 1 = processed
 }
 
-const db = new Dexie('CashTracker') as Dexie & {
-  transactions: EntityTable<Transaction, 'id'>;
-  budgets: EntityTable<Budget, 'month'>;
-  drafts: EntityTable<Draft, 'id'>;
-  receipts: EntityTable<Receipt, 'id'>;
-};
-
-db.version(3).stores({
-  transactions: '++id, date, category, type',
-  budgets: '[month+category], month, category',
-  drafts: '++id, updatedAt',
-  receipts: '++id, processed, createdAt, category'
-});
-
-export { db };
-
-// Draft management helpers
-export async function saveDraft(draft: Omit<Draft, 'id' | 'updatedAt'>) {
-  // Clear existing drafts and save new one
-  await db.drafts.clear();
-  await db.drafts.add({
-    ...draft,
-    updatedAt: new Date()
-  });
+// Create DB
+export const db = new Dexie('CashTracker') as Dexie & {
+  transactions: EntityTable<Transaction, 'id'>
+  receipts: EntityTable<Receipt, 'id'>
 }
 
-export async function getDraft(): Promise<Draft | undefined> {
-  const drafts = await db.drafts.toArray();
-  return drafts[0];
-}
+// Use a high version so it upgrades cleanly
+db.version(32).stores({
+  transactions: '++id, date, amount, category, type, synced',
+  receipts: '++id, createdAt, processed'
+})
 
-export async function clearDraft() {
-  await db.drafts.clear();
-}
-
-// Receipt inbox helpers
-export async function addReceiptToInbox(receipt: Omit<Receipt, 'id' | 'createdAt' | 'processed'>) {
+// Receipt helper functions (exactly what capture + inbox expect)
+export const addReceiptToInbox = async (receipt: Omit<Receipt, 'id' | 'createdAt'>) => {
   return await db.receipts.add({
     ...receipt,
-    processed: false,
-    createdAt: new Date()
-  });
+    createdAt: new Date(),
+    processed: 0,
+  })
 }
 
-export async function getUnprocessedReceipts(): Promise<Receipt[]> {
-  return await db.receipts.where('processed').equals(0).toArray();
+export const markReceiptProcessed = async (id: number, category: string) => {
+  return await db.receipts.update(id, { processed: 1, category })
 }
 
-export async function markReceiptProcessed(id: number, category: 'gas' | 'food' | 'medical' | 'other') {
-  const receipt = await db.receipts.get(id);
-  if (receipt && receipt.amount > 0) {
-    // Create transaction from receipt
-    await db.transactions.add({
-      date: receipt.createdAt,
-      category,
-      type: 'out',
-      amount: receipt.amount,
-      note: 'Receipt scan',
-    });
-    // Mark receipt as processed
-    await db.receipts.update(id, { processed: true, category });
-  }
+export const bulkMarkReceiptsProcessed = async (ids: number[], category: string) => {
+  return await db.receipts.bulkUpdate(
+    ids.map(id => ({ key: id, changes: { processed: 1, category } }))
+  )
 }
 
-export async function bulkMarkReceiptsProcessed(ids: number[], category: 'gas' | 'food' | 'medical' | 'other') {
-  for (const id of ids) {
-    await markReceiptProcessed(id, category);
-  }
+export const deleteReceipt = async (id: number) => {
+  return await db.receipts.delete(id)
 }
 
-export async function deleteReceipt(id: number) {
-  await db.receipts.delete(id);
+export const bulkDeleteReceipts = async (ids: number[]) => {
+  return await db.receipts.bulkDelete(ids)
 }
 
-export async function bulkDeleteReceipts(ids: number[]) {
-  await db.receipts.bulkDelete(ids);
-}
+export type { Transaction, Receipt }

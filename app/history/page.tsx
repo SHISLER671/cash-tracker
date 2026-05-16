@@ -1,25 +1,24 @@
 "use client"
 
-import { useCallback } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft } from "lucide-react"
 import { db } from "@/lib/db"
 import { Transaction as DbTransaction } from "@/lib/db"
-import { Transaction } from "@/lib/types"
 import { TransactionList } from "@/components/transaction-list"
+import EditTransactionModal from "@/components/EditTransactionModal"
 
 export default function HistoryPage() {
   const router = useRouter()
+  const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null)
 
-  // Get all transactions from Dexie, sorted by date descending
   const dbTransactions = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [])
 
-  // Map Dexie transactions to UI format
-  const transactions: Transaction[] = (dbTransactions ?? []).map((t: DbTransaction) => ({
+  const transactions = (dbTransactions ?? []).map((t: DbTransaction) => ({
     id: String(t.id),
     type: t.type,
     amount: t.amount,
@@ -28,7 +27,6 @@ export default function HistoryPage() {
     note: t.note,
   }))
 
-  // Calculate totals
   const income = transactions
     .filter((t) => t.type === "in")
     .reduce((sum, t) => sum + t.amount, 0)
@@ -37,11 +35,14 @@ export default function HistoryPage() {
     .filter((t) => t.type === "out")
     .reduce((sum, t) => sum + t.amount, 0)
 
-  const handleRefresh = useCallback(async () => {
-    // With Dexie live queries, data refreshes automatically
-    // This is just for the pull-to-refresh UX
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }, [])
+  const handleEdit = (tx: { id: string }) => {
+    const fullTx = dbTransactions?.find((t) => String(t.id) === tx.id)
+    if (fullTx) setEditingTransaction(fullTx)
+  }
+
+  const handleModalSave = () => {
+    setEditingTransaction(null)
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -82,7 +83,17 @@ export default function HistoryPage() {
       </div>
 
       {/* Transaction List */}
-      <TransactionList transactions={transactions} onRefresh={handleRefresh} />
+      <TransactionList
+        transactions={transactions}
+        onRefresh={async () => {}}
+        onEdit={handleEdit}
+      />
+
+      <EditTransactionModal
+        transaction={editingTransaction}
+        onClose={() => setEditingTransaction(null)}
+        onSave={handleModalSave}
+      />
     </div>
   )
 }
