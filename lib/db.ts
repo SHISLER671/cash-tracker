@@ -18,7 +18,7 @@ export interface Receipt {
   merchant?: string
   category?: string
   createdAt: Date
-  processed: number // 0 = unprocessed, 1 = processed
+  processed: number // 0 = inbox, 1 = processed
 }
 
 // Create DB
@@ -27,18 +27,18 @@ export const db = new Dexie('CashTracker') as Dexie & {
   receipts: EntityTable<Receipt, 'id'>
 }
 
-// High version number so it safely upgrades your existing DB
-db.version(31).stores({
+// Use a high version so it upgrades cleanly
+db.version(32).stores({
   transactions: '++id, date, amount, category, type, synced',
   receipts: '++id, createdAt, processed'
 })
 
-// Receipt helpers (exactly what capture + inbox pages expect)
+// Receipt helper functions (exactly what capture + inbox expect)
 export const addReceiptToInbox = async (receipt: Omit<Receipt, 'id' | 'createdAt'>) => {
   return await db.receipts.add({
     ...receipt,
     createdAt: new Date(),
-    processed: 0
+    processed: 0,
   })
 }
 
