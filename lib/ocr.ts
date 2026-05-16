@@ -7,13 +7,23 @@ export interface ScanResult {
 
 // Venice config
 const VENICE_API_URL = "https://api.venice.ai/api/v1/chat/completions"
-const MODELS_TO_TRY = [
-  "qwen3-6-27b",           // lighter + strong vision (recommended right now)
-  "qwen3-vl-235b-a22b",    // big one as backup
-]
+const MODELS_TO_TRY = ["qwen3-6-27b", "qwen3-vl-235b-a22b"]
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Helper to robustly extract JSON even if the model adds extra text
+function extractJson(text: string): any {
+  // Try to find JSON block
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (jsonMatch) {
+    try {
+      return JSON.parse(jsonMatch[0])
+    } catch {}
+  }
+  // Fallback: just try parsing the whole thing
+  return JSON.parse(text)
 }
 
 async function callVeniceWithRetry(imageData: string): Promise<ScanResult> {
@@ -25,7 +35,7 @@ async function callVeniceWithRetry(imageData: string): Promise<ScanResult> {
   for (let attempt = 0; attempt < 3; attempt++) {
     for (const model of MODELS_TO_TRY) {
       try {
-        console.log(`🔄 Attempt ${attempt + 1}/3 → Trying model: ${model}`)
+        console.log(`🔄 Attempt ${attempt + 1}/3 → ${model}`)
 
         const response = await fetch(VENICE_API_URL, {
           method: "POST",
@@ -35,30 +45,26 @@ async function callVeniceWithRetry(imageData: string): Promise<ScanResult> {
           },
           body: JSON.stringify({
             model,
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `You are an expert receipt scanner. Extract ONLY from this photo. Return valid JSON only:
+            messages: [{
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `You are an expert receipt scanner. Extract ONLY from this photo. Return **nothing but valid JSON** (no explanations, no markdown, no extra text):
 
 {
-  "amount": number (final total paid, e.g. 42.75),
-  "merchant": string (store name, e.g. "Shell Gas" or "Walmart"),
-  "date": string (YYYY-MM-DD if visible, otherwise ""),
+  "amount": number,
+  "merchant": string,
+  "date": string (YYYY-MM-DD or empty),
   "category": "gas" | "food" | "medical" | "other"
-}
-
-Use the biggest total (after tax). Merchant = top store name. Be precise.`,
-                  },
-                  {
-                    type: "image_url",
-                    image_url: { url: `data:image/jpeg;base64,${base64}` },
-                  },
-                ],
-              },
-            ],
+}`,
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: `data:image/jpeg;base64,${base64}` },
+                },
+              ],
+            }],
             temperature: 0,
             max_tokens: 300,
             response_format: { type: "json_object" },
@@ -66,18 +72,18 @@ Use the biggest total (after tax). Merchant = top store name. Be precise.`,
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
+          const err = await response.text()
           if (response.status === 429) {
-            console.log(`⏳ Model overloaded (429) — retrying...`)
-            await sleep(1500) // 1.5 second backoff
+            console.log(`⏳ Overloaded — waiting...`)
+            await sleep(2000)
             continue
           }
-          throw new Error(`Venice ${response.status}: ${errorText}`)
+          throw new Error(err)
         }
 
         const data = await response.json()
-        const jsonText = data.choices[0].message.content.trim()
-        const parsed = JSON.parse(jsonText)
+        const raw = data.choices[0].message.content.trim()
+        const parsed = extractJson(raw)
 
         const result: ScanResult = {
           amount: Number(parsed.amount) || 0,
@@ -86,34 +92,30 @@ Use the biggest total (after tax). Merchant = top store name. Be precise.`,
           category: parsed.category || "other",
         }
 
-        console.log("✅ Venice AI success:", result)
+        console.log("✅ Venice AI extracted:", result)
         return result
 
       } catch (err: any) {
         console.warn(`Model ${model} failed:`, err.message)
       }
     }
-    // If all models failed on this attempt, wait before next outer retry
-    if (attempt < 2) await sleep(2000)
+    if (attempt < 2) await sleep(1500)
   }
 
   throw new Error("All Venice attempts failed")
 }
 
-// Tesseract fallback (still here just in case)
 async function scanWithTesseract(): Promise<ScanResult> {
-  console.log("Venice unavailable → falling back to Tesseract (temporary)")
+  console.log("Venice unavailable → Tesseract fallback")
   return { amount: 0, merchant: "Unknown", date: "" }
 }
 
-// Main export
 export const scanReceipt = async (imageData: string): Promise<ScanResult> => {
   console.log("🔍 Starting AI vision scan on receipt...")
-
   try {
     return await callVeniceWithRetry(imageData)
   } catch (error) {
-    console.warn("All Venice attempts failed, falling back to Tesseract:", error)
+    console.warn("Venice failed, falling back to Tesseract:", error)
     return await scanWithTesseract()
   }
 }
