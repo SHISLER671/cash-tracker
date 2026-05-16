@@ -6,6 +6,7 @@ import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft, Inbox, Trash2, Check, X } from "lucide-react"
 import { db, markReceiptProcessed, bulkMarkReceiptsProcessed, deleteReceipt, bulkDeleteReceipts, type Receipt } from "@/lib/db"
 import { formatDistanceToNow } from "date-fns"
+import EditTransactionModal from "@/components/EditTransactionModal"
 
 type Category = "gas" | "food" | "medical" | "other"
 
@@ -21,6 +22,7 @@ export default function InboxPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [isProcessing, setIsProcessing] = useState(false)
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
+  const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null)
 
   // Get unprocessed receipts
   const receipts = useLiveQuery(async () => {
@@ -77,6 +79,26 @@ export default function InboxPage() {
     await deleteReceipt(id)
     setIsProcessing(false)
   }
+
+  const openEditFromReceipt = (receipt: Receipt) => {
+    setEditingReceipt(receipt)
+  }
+
+  const handleModalSave = () => {
+    setEditingReceipt(null)
+  }
+
+  // Convert receipt to transaction format for the modal
+  const receiptAsTransaction = editingReceipt ? {
+    id: undefined,
+    date: editingReceipt.createdAt || new Date(),
+    amount: editingReceipt.amount || 0,
+    merchant: editingReceipt.merchant || "Unknown",
+    category: editingReceipt.category || "",
+    type: "out" as const,
+    note: "",
+    synced: false,
+  } : null
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -149,6 +171,7 @@ export default function InboxPage() {
                   onToggleSelect={() => toggleSelect(receipt.id!)}
                   onCategorize={(cat) => handleSingleCategorize(receipt.id!, cat)}
                   onDelete={() => handleSingleDelete(receipt.id!)}
+                  onEdit={() => openEditFromReceipt(receipt)}
                   disabled={isProcessing}
                 />
               ))}
@@ -189,6 +212,13 @@ export default function InboxPage() {
           </div>
         </div>
       )}
+
+      {/* Edit Transaction Modal */}
+      <EditTransactionModal
+        transaction={receiptAsTransaction}
+        onClose={() => setEditingReceipt(null)}
+        onSave={handleModalSave}
+      />
     </div>
   )
 }
@@ -200,6 +230,7 @@ function ReceiptCard({
   onToggleSelect,
   onCategorize,
   onDelete,
+  onEdit,
   disabled,
 }: {
   receipt: Receipt
@@ -207,19 +238,22 @@ function ReceiptCard({
   onToggleSelect: () => void
   onCategorize: (category: Category) => void
   onDelete: () => void
+  onEdit: () => void
   disabled: boolean
 }) {
-  const [showActions, setShowActions] = useState(false)
-
   return (
     <div
-      className={`flex gap-3 rounded-xl bg-card p-3 shadow-earth transition-all ${
+      onClick={onEdit}
+      className={`flex gap-3 rounded-xl bg-card p-3 shadow-earth cursor-pointer transition-all ${
         isSelected ? "ring-2 ring-primary" : ""
       }`}
     >
       {/* Checkbox */}
       <button
-        onClick={onToggleSelect}
+        onClick={(e) => {
+          e.stopPropagation()
+          onToggleSelect()
+        }}
         className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border-2 transition-all ${
           isSelected
             ? "border-primary bg-primary text-white"
@@ -251,6 +285,9 @@ function ReceiptCard({
             <p className="text-xl font-bold text-foreground">
               ${receipt.amount.toFixed(2)}
             </p>
+            <p className="text-sm font-medium text-foreground truncate">
+              {receipt.merchant || "Unknown"}
+            </p>
             <p className="text-xs text-muted-foreground">
               {formatDistanceToNow(receipt.createdAt, { addSuffix: true })}
             </p>
@@ -263,7 +300,10 @@ function ReceiptCard({
             ([cat, config]) => (
               <button
                 key={cat}
-                onClick={() => onCategorize(cat)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCategorize(cat)
+                }}
                 disabled={disabled}
                 className={`px-2 py-1 rounded text-xs font-semibold ${config.textColor} bg-secondary transition-all hover:brightness-95 active:scale-95 disabled:opacity-50`}
               >
@@ -272,7 +312,10 @@ function ReceiptCard({
             )
           )}
           <button
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
             disabled={disabled}
             className="px-2 py-1 rounded text-xs font-semibold text-expense bg-secondary transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
           >

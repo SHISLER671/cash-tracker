@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react'
 import { db, type Transaction } from '@/lib/db'
 import { supabase } from '@/lib/supabase/client'
+import { toast } from 'sonner' // or your toast library — if you don't have one, I can add a simple one
 
 interface Props {
   transaction: Transaction | null
   onClose: () => void
-  onSave: (updated: Transaction) => void
+  onSave: () => void
 }
 
 export default function EditTransactionModal({ transaction, onClose, onSave }: Props) {
@@ -22,148 +23,148 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
   })
 
   useEffect(() => {
-    if (transaction) setForm(transaction)
+    if (transaction) setForm({ ...transaction })
   }, [transaction])
 
   const handleSave = async () => {
-    if (!form.amount || !form.merchant) return
+    if (!form.amount || !form.merchant?.trim()) return
 
-    const updated = { ...form, synced: false }
+    const updated: Transaction = { ...form, synced: false }
 
-    // Update local Dexie immediately
-    if (updated.id) {
+    // Save to local Dexie
+    if (updated.id !== undefined) {
       await db.transactions.update(updated.id, updated)
     } else {
       await db.transactions.add(updated)
     }
 
-    // Push to Supabase
+    // Push to Supabase (ledger)
     try {
-      const payload = {
+      await supabase.from('shared_transactions').insert({
         date: updated.date.toISOString(),
         amount: updated.amount,
         category: updated.category,
         type: updated.type,
         note: updated.note || null,
-        device_id: `edit-${Date.now()}`
-      }
-
-      if (updated.id) {
-        // For existing Supabase rows we would need the Supabase ID, but for simplicity we just insert a new one
-        // (you can improve this later with a supabase_id column if you want true updates)
-        await supabase.from('shared_transactions').insert(payload)
-      } else {
-        await supabase.from('shared_transactions').insert(payload)
-      }
+        device_id: `edit-${Date.now()}`,
+      })
     } catch (e) {
-      console.warn('Supabase push failed (will sync later)', e)
+      console.warn('Supabase push delayed — will sync later', e)
     }
 
-    onSave(updated)
+    toast.success('Transaction saved!')
+    onSave()
     onClose()
   }
 
   const handleDelete = async () => {
-    if (!form.id) return
+    if (form.id === undefined) return
     await db.transactions.delete(form.id)
-    // TODO: delete from Supabase if you want (optional for now)
+    toast.success('Transaction deleted')
     onClose()
   }
 
   if (!transaction) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-3xl p-6 w-full max-w-md mx-4">
-        <h2 className="text-2xl font-bold mb-6">Edit Transaction</h2>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-3xl w-full max-w-md max-h-[90vh] overflow-auto">
+        <div className="p-6">
+          <h2 className="text-2xl font-bold mb-6">Edit Transaction</h2>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm mb-1">Amount</label>
-            <input
-              type="number"
-              step="0.01"
-              value={form.amount}
-              onChange={e => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })}
-              className="w-full p-3 border rounded-2xl"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm mb-1">Merchant</label>
-            <input
-              type="text"
-              value={form.merchant}
-              onChange={e => setForm({ ...form, merchant: e.target.value })}
-              className="w-full p-3 border rounded-2xl"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-5">
+            {/* Amount */}
             <div>
-              <label className="block text-sm mb-1">Date</label>
+              <label className="text-sm font-medium block mb-1">Amount</label>
               <input
-                type="date"
-                value={form.date.toISOString().split('T')[0]}
-                onChange={e => setForm({ ...form, date: new Date(e.target.value) })}
-                className="w-full p-3 border rounded-2xl"
+                type="number"
+                step="0.01"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })}
+                className="w-full p-4 rounded-2xl border text-3xl font-bold"
               />
             </div>
+
+            {/* Merchant */}
             <div>
-              <label className="block text-sm mb-1">Type</label>
-              <select
-                value={form.type}
-                onChange={e => setForm({ ...form, type: e.target.value as 'in' | 'out' })}
-                className="w-full p-3 border rounded-2xl"
-              >
-                <option value="out">Out (spent)</option>
-                <option value="in">In (received)</option>
-              </select>
+              <label className="text-sm font-medium block mb-1">Merchant / Store</label>
+              <input
+                type="text"
+                value={form.merchant}
+                onChange={(e) => setForm({ ...form, merchant: e.target.value })}
+                className="w-full p-4 rounded-2xl border"
+              />
+            </div>
+
+            {/* Date + Type */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium block mb-1">Date</label>
+                <input
+                  type="date"
+                  value={form.date instanceof Date ? form.date.toISOString().split('T')[0] : ''}
+                  onChange={(e) => setForm({ ...form, date: new Date(e.target.value) })}
+                  className="w-full p-4 rounded-2xl border"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Type</label>
+                <select
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value as 'in' | 'out' })}
+                  className="w-full p-4 rounded-2xl border"
+                >
+                  <option value="out">Spent (Out)</option>
+                  <option value="in">Received (In)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Category (free text) */}
+            <div>
+              <label className="text-sm font-medium block mb-1">Category</label>
+              <input
+                type="text"
+                value={form.category}
+                placeholder="food, gas, coffee, groceries..."
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="w-full p-4 rounded-2xl border"
+              />
+            </div>
+
+            {/* Note */}
+            <div>
+              <label className="text-sm font-medium block mb-1">Note / Memo</label>
+              <textarea
+                value={form.note || ''}
+                onChange={(e) => setForm({ ...form, note: e.target.value })}
+                className="w-full p-4 rounded-2xl border h-28"
+              />
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm mb-1">Category</label>
-            <input
-              type="text"
-              value={form.category}
-              onChange={e => setForm({ ...form, category: e.target.value })}
-              placeholder="food, gas, medical, coffee, etc."
-              className="w-full p-3 border rounded-2xl"
-            />
+          <div className="flex gap-3 mt-8">
+            <button
+              onClick={handleDelete}
+              className="flex-1 py-5 bg-red-100 hover:bg-red-200 text-red-600 rounded-3xl font-semibold transition-all"
+            >
+              Delete
+            </button>
+            <button
+              onClick={handleSave}
+              className="flex-1 py-5 bg-black text-white rounded-3xl font-semibold transition-all active:scale-95"
+            >
+              Save Changes
+            </button>
           </div>
 
-          <div>
-            <label className="block text-sm mb-1">Note</label>
-            <textarea
-              value={form.note || ''}
-              onChange={e => setForm({ ...form, note: e.target.value })}
-              className="w-full p-3 border rounded-2xl h-24"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-3 mt-8">
           <button
-            onClick={handleDelete}
-            className="flex-1 py-4 bg-red-100 text-red-600 rounded-3xl font-medium"
+            onClick={onClose}
+            className="w-full mt-4 text-gray-500 py-3"
           >
-            Delete
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 py-4 bg-black text-white rounded-3xl font-medium"
-          >
-            Save Changes
+            Cancel
           </button>
         </div>
-
-        <button
-          onClick={onClose}
-          className="mt-4 w-full text-gray-500"
-        >
-          Cancel
-        </button>
       </div>
     </div>
   )
