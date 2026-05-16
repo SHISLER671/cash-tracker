@@ -9,12 +9,13 @@ export interface ScanResult {
 
 // Venice API config
 const VENICE_API_URL = "https://api.venice.ai/api/v1/chat/completions"
-const VENICE_MODEL = "qwen3-vl-30b-a3b" // change to "e2ee-qwen3-vl-30b-a3b-p" if you prefer the private TEE version
+const VENICE_MODEL = "qwen3-vl-235b-a22b" // ← FIXED: this is the correct vision model
 
 // === AI VISION SCAN (main path) ===
 async function scanWithVenice(imageData: string): Promise<ScanResult> {
-  if (!process.env.NEXT_PUBLIC_VENICE_API_KEY) {
-    throw new Error("No Venice key")
+  const apiKey = process.env.NEXT_PUBLIC_VENICE_API_KEY
+  if (!apiKey) {
+    throw new Error("No Venice API key found")
   }
 
   const base64 = imageData.replace(/^data:image\/\w+;base64,/, "")
@@ -23,7 +24,7 @@ async function scanWithVenice(imageData: string): Promise<ScanResult> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.NEXT_PUBLIC_VENICE_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: VENICE_MODEL,
@@ -33,39 +34,40 @@ async function scanWithVenice(imageData: string): Promise<ScanResult> {
           content: [
             {
               type: "text",
-              text: `You are an expert receipt scanner. Extract the following from this receipt photo. Return ONLY valid JSON, no extra text.
+              text: `You are an expert receipt scanner. Extract ONLY from this photo. Return valid JSON only:
 
 {
-  "amount": number (the total paid, e.g. 42.75),
-  "merchant": string (store name, e.g. "Shell Gas" or "Walmart"),
-  "date": string (in YYYY-MM-DD format if possible, otherwise leave empty),
+  "amount": number (the final total paid, e.g. 42.75),
+  "merchant": string (store name, e.g. "Shell Gas Station" or "Walmart"),
+  "date": string (YYYY-MM-DD if visible, otherwise ""),
   "category": "gas" | "food" | "medical" | "other"
 }
 
-Be accurate. If you can't find something, use sensible defaults (amount=0, merchant="Unknown", category="other").`,
+Rules:
+- Use the biggest total (after tax).
+- Merchant = first clear store name at the top.
+- Be precise. If unsure, amount=0, merchant="Unknown", category="other".`,
             },
             {
               type: "image_url",
-              image_url: {
-                url: `data:image/jpeg;base64,${base64}`,
-              },
+              image_url: { url: `data:image/jpeg;base64,${base64}` },
             },
           ],
         },
       ],
-      temperature: 0.0,
+      temperature: 0,
       max_tokens: 300,
       response_format: { type: "json_object" },
     }),
   })
 
   if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`Venice error: ${response.status} - ${err}`)
+    const errorText = await response.text()
+    throw new Error(`Venice error ${response.status}: ${errorText}`)
   }
 
   const data = await response.json()
-  const jsonText = data.choices[0].message.content
+  const jsonText = data.choices[0].message.content.trim()
   const parsed = JSON.parse(jsonText)
 
   return {
