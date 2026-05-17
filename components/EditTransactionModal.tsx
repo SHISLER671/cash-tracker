@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { db, type Transaction } from '@/lib/db'
 import { supabase } from '@/lib/supabase/client'
-import { toast } from 'sonner' // or your toast library — if you don't have one, I can add a simple one
+import { toast } from 'sonner'
 
 interface Props {
   transaction: Transaction | null
@@ -31,14 +31,13 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
 
     const updated: Transaction = { ...form, synced: false }
 
-    // Save to local Dexie
     if (updated.id !== undefined) {
       await db.transactions.update(updated.id, updated)
     } else {
       await db.transactions.add(updated)
     }
 
-    // Push to Supabase (ledger)
+    // Push to Supabase
     try {
       await supabase.from('shared_transactions').insert({
         date: updated.date.toISOString(),
@@ -49,7 +48,7 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
         device_id: `edit-${Date.now()}`,
       })
     } catch (e) {
-      console.warn('Supabase push delayed — will sync later', e)
+      console.warn('Supabase push delayed', e)
     }
 
     toast.success('Transaction saved!')
@@ -59,8 +58,25 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
 
   const handleDelete = async () => {
     if (form.id === undefined) return
+
+    // First delete from local DB
     await db.transactions.delete(form.id)
-    toast.success('Transaction deleted')
+
+    // Show undo toast
+    toast.error('Transaction deleted', {
+      description: 'This action cannot be undone later',
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          // Restore the transaction
+          await db.transactions.add(form)
+          toast.success('Transaction restored')
+          onSave() // refresh list
+        },
+      },
+      duration: 5000,
+    })
+
     onClose()
   }
 
@@ -73,7 +89,6 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
           <h2 className="text-2xl font-bold mb-6">Edit Transaction</h2>
 
           <div className="space-y-5">
-            {/* Amount */}
             <div>
               <label className="text-sm font-medium block mb-1">Amount</label>
               <input
@@ -85,7 +100,6 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
               />
             </div>
 
-            {/* Merchant */}
             <div>
               <label className="text-sm font-medium block mb-1">Merchant / Store</label>
               <input
@@ -96,13 +110,12 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
               />
             </div>
 
-            {/* Date + Type */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium block mb-1">Date</label>
                 <input
                   type="date"
-                  value={form.date instanceof Date ? form.date.toISOString().split('T')[0] : ''}
+                  value={form.date.toISOString().split('T')[0]}
                   onChange={(e) => setForm({ ...form, date: new Date(e.target.value) })}
                   className="w-full p-4 rounded-2xl border"
                 />
@@ -120,7 +133,6 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
               </div>
             </div>
 
-            {/* Category (free text) */}
             <div>
               <label className="text-sm font-medium block mb-1">Category</label>
               <input
@@ -132,7 +144,6 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
               />
             </div>
 
-            {/* Note */}
             <div>
               <label className="text-sm font-medium block mb-1">Note / Memo</label>
               <textarea
@@ -146,22 +157,19 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
           <div className="flex gap-3 mt-8">
             <button
               onClick={handleDelete}
-              className="flex-1 py-5 bg-red-100 hover:bg-red-200 text-red-600 rounded-3xl font-semibold transition-all"
+              className="flex-1 py-5 bg-red-100 hover:bg-red-200 text-red-600 rounded-3xl font-semibold"
             >
               Delete
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 py-5 bg-black text-white rounded-3xl font-semibold transition-all active:scale-95"
+              className="flex-1 py-5 bg-black text-white rounded-3xl font-semibold active:scale-95"
             >
               Save Changes
             </button>
           </div>
 
-          <button
-            onClick={onClose}
-            className="w-full mt-4 text-gray-500 py-3"
-          >
+          <button onClick={onClose} className="w-full mt-4 text-gray-500 py-3">
             Cancel
           </button>
         </div>
