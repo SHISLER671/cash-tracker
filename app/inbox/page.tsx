@@ -8,15 +8,6 @@ import { db, markReceiptProcessed, bulkMarkReceiptsProcessed, deleteReceipt, bul
 import { formatDistanceToNow } from "date-fns"
 import EditTransactionModal from "@/components/EditTransactionModal"
 
-type Category = "gas" | "food" | "medical" | "other"
-
-const categoryConfig = {
-  gas: { label: "GAS", color: "bg-primary", textColor: "text-primary" },
-  food: { label: "FOOD", color: "bg-income", textColor: "text-income" },
-  medical: { label: "MED", color: "bg-expense", textColor: "text-expense" },
-  other: { label: "OTHER", color: "bg-muted-foreground", textColor: "text-muted-foreground" },
-}
-
 export default function InboxPage() {
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -45,7 +36,7 @@ export default function InboxPage() {
     }
   }
 
-  const handleApplyCategory = async (category: Category) => {
+  const handleApplyCategory = async (category: string) => {
     if (selectedIds.size === 0) return
     setIsProcessing(true)
     await bulkMarkReceiptsProcessed(Array.from(selectedIds), category)
@@ -62,7 +53,7 @@ export default function InboxPage() {
     setIsProcessing(false)
   }
 
-  const handleSingleCategorize = async (id: number, category: Category) => {
+  const handleSingleCategorize = async (id: number, category: string) => {
     setIsProcessing(true)
     await markReceiptProcessed(id, category)
     setIsProcessing(false)
@@ -85,7 +76,6 @@ export default function InboxPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4">
-        {/* Header */}
         <header className="flex items-center justify-between border-b border-border py-4">
           <button onClick={() => router.back()} className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20">
             <ArrowLeft className="h-5 w-5" />
@@ -96,7 +86,6 @@ export default function InboxPage() {
           <div className="w-11" />
         </header>
 
-        {/* Selection bar */}
         {unprocessedCount > 0 && (
           <div className="flex items-center justify-between py-3 border-b border-border">
             <button onClick={selectAll} className="text-sm font-medium text-primary">
@@ -116,7 +105,6 @@ export default function InboxPage() {
           </div>
         )}
 
-        {/* Receipt list */}
         <div className="flex-1 py-4">
           {unprocessedCount === 0 ? (
             <div className="flex flex-col items-center justify-center h-full py-12">
@@ -145,7 +133,6 @@ export default function InboxPage() {
         </div>
       </main>
 
-      {/* Category picker modal */}
       {showCategoryPicker && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/20 p-4">
           <div className="w-full max-w-md rounded-t-2xl bg-card p-6 shadow-earth-lg animate-in slide-in-from-bottom">
@@ -156,14 +143,14 @@ export default function InboxPage() {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {(Object.entries(categoryConfig) as [Category, typeof categoryConfig.gas][]).map(([cat, config]) => (
+              {["gas", "food", "medical", "other"].map((cat) => (
                 <button
                   key={cat}
                   onClick={() => handleApplyCategory(cat)}
                   disabled={isProcessing}
-                  className={`flex items-center justify-center gap-2 py-4 rounded-xl ${config.color} text-white font-semibold transition-all hover:brightness-95 active:scale-98 disabled:opacity-50`}
+                  className="flex items-center justify-center gap-2 py-4 rounded-xl bg-secondary text-foreground font-semibold transition-all hover:brightness-95 active:scale-98 disabled:opacity-50"
                 >
-                  {config.label}
+                  {cat.toUpperCase()}
                 </button>
               ))}
             </div>
@@ -171,7 +158,6 @@ export default function InboxPage() {
         </div>
       )}
 
-      {/* Edit Modal */}
       <EditTransactionModal
         transaction={editingReceipt ? {
           id: undefined,
@@ -190,7 +176,6 @@ export default function InboxPage() {
   )
 }
 
-// Updated ReceiptCard – whole card is now clickable
 function ReceiptCard({
   receipt,
   isSelected,
@@ -203,7 +188,7 @@ function ReceiptCard({
   receipt: Receipt
   isSelected: boolean
   onToggleSelect: () => void
-  onCategorize: (category: Category) => void
+  onCategorize: (category: string) => void
   onDelete: () => void
   onEdit: () => void
   disabled: boolean
@@ -213,12 +198,10 @@ function ReceiptCard({
       onClick={onEdit}
       className={`flex gap-3 rounded-xl bg-card p-3 shadow-earth cursor-pointer transition-all ${isSelected ? "ring-2 ring-primary" : ""}`}
     >
-      {/* Checkbox */}
       <button onClick={(e) => { e.stopPropagation(); onToggleSelect() }} className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border-2 transition-all ${isSelected ? "border-primary bg-primary text-white" : "border-border bg-card"}`}>
         {isSelected && <Check className="h-4 w-4" />}
       </button>
 
-      {/* Thumbnail */}
       <div className="w-16 h-20 rounded-lg overflow-hidden bg-secondary flex-shrink-0">
         {receipt.imageData ? (
           <img src={receipt.imageData} alt="Receipt" className="w-full h-full object-cover" />
@@ -229,7 +212,6 @@ function ReceiptCard({
         )}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between">
           <div>
@@ -238,16 +220,15 @@ function ReceiptCard({
           </div>
         </div>
 
-        {/* Quick category buttons */}
         <div className="flex gap-1 mt-2">
-          {(Object.entries(categoryConfig) as [Category, typeof categoryConfig.gas][]).map(([cat, config]) => (
+          {["gas", "food", "medical", "other"].map((cat) => (
             <button
               key={cat}
               onClick={(e) => { e.stopPropagation(); onCategorize(cat) }}
               disabled={disabled}
-              className={`px-2 py-1 rounded text-xs font-semibold ${config.textColor} bg-secondary transition-all hover:brightness-95 active:scale-95 disabled:opacity-50`}
+              className="px-2 py-1 rounded text-xs font-semibold text-foreground bg-secondary transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
             >
-              {config.label}
+              {cat.toUpperCase()}
             </button>
           ))}
           <button onClick={(e) => { e.stopPropagation(); onDelete() }} disabled={disabled} className="px-2 py-1 rounded text-xs font-semibold text-expense bg-secondary transition-all hover:brightness-95 active:scale-95 disabled:opacity-50">
