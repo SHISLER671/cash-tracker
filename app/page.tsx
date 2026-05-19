@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useLiveQuery } from "dexie-react-hooks"
 import { useEffect } from "react"
-import { Settings, Clock, Inbox } from "lucide-react"
+import { Settings, Clock, Inbox, BarChart3 } from "lucide-react"
 import { db } from "@/lib/db"
 import { CashDisplay } from "@/components/cash-display"
 import { BudgetProgress } from "@/components/budget-progress"
@@ -104,6 +104,13 @@ export default function Home() {
               aria-label="View history"
             >
               <Clock className="h-5 w-5" />
+            </Link>
+            <Link
+              href="/report"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
+              aria-label="Monthly report"
+            >
+              <BarChart3 className="h-5 w-5" />
             </Link>
           </div>
         </header>
