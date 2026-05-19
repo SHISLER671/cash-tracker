@@ -1,4 +1,4 @@
-import { db, type Transaction } from '@/lib/db'
+import { db } from '@/lib/db'
 import { supabase } from './client'
 
 export interface SyncStatus {
@@ -28,7 +28,20 @@ function saveSyncStatus(status: Partial<SyncStatus>) {
   localStorage.setItem('cashtracker_sync_status', JSON.stringify(updated))
 }
 
-/** Push new local transactions to Supabase (wife taps "SHARE WITH PARTNER") */
+/** Auto-pull when app opens */
+export async function autoPullIfNeeded() {
+  const lastPulled = getSyncStatus().lastPulled || new Date(0)
+  const minutesSinceLastPull = (Date.now() - lastPulled.getTime()) / 1000 / 60
+  
+  if (minutesSinceLastPull > 5) {  // only pull if >5 minutes old
+    const result = await pullFromPartner()
+    if (result.success && result.count > 0) {
+      console.log(`✅ Auto-pulled ${result.count} new transactions`)
+    }
+  }
+}
+
+/** Push new transactions */
 export async function pushToPartner(): Promise<{ success: boolean; count: number; error?: string }> {
   try {
     const transactions = await db.transactions.toArray()
@@ -45,22 +58,18 @@ export async function pushToPartner(): Promise<{ success: boolean; count: number
 
     const { error } = await supabase
       .from('shared_transactions')
-      .insert(
-        newTransactions.map(t => ({
-          date: t.date.toISOString(),
-          amount: t.amount,
-          category: t.category,
-          type: t.type,
-          note: t.note || null,
-          device_id: `web-${Date.now()}`
-        }))
-      )
+      .insert(newTransactions.map(t => ({
+        date: t.date.toISOString(),
+        amount: t.amount,
+        category: t.category,
+        type: t.type,
+        note: t.note || null,
+        device_id: `web-${Date.now()}`
+      })))
 
     if (error) throw error
 
     saveSyncStatus({ lastPushed: new Date(), pendingCount: 0 })
-    console.log(`✅ Pushed ${newTransactions.length} transactions to Supabase`)
-
     return { success: true, count: newTransactions.length }
   } catch (error) {
     console.error('Push failed:', error)
@@ -68,11 +77,11 @@ export async function pushToPartner(): Promise<{ success: boolean; count: number
   }
 }
 
-/** Pull from Supabase (you tap "CHECK FOR UPDATES") */
+/** Pull from Supabase */
 export async function pullFromPartner(): Promise<{ success: boolean; count: number; error?: string }> {
   try {
     const lastPulled = getSyncStatus().lastPulled || new Date(0)
-
+    
     const { data, error } = await supabase
       .from('shared_transactions')
       .select('*')
@@ -87,7 +96,6 @@ export async function pullFromPartner(): Promise<{ success: boolean; count: numb
 
     let added = 0
     for (const remote of data) {
-      // Avoid duplicates (same date + amount + category)
       const existing = await db.transactions
         .where('date')
         .equals(new Date(remote.date))
@@ -98,8 +106,8 @@ export async function pullFromPartner(): Promise<{ success: boolean; count: numb
         await db.transactions.add({
           date: new Date(remote.date),
           amount: Number(remote.amount),
-          category: remote.category as any,
-          type: remote.type as any,
+          category: remote.category,
+          type: remote.type as 'in' | 'out',
           note: remote.note || undefined,
         })
         added++
@@ -107,8 +115,6 @@ export async function pullFromPartner(): Promise<{ success: boolean; count: numb
     }
 
     saveSyncStatus({ lastPulled: new Date() })
-    console.log(`✅ Pulled and added ${added} new transactions`)
-
     return { success: true, count: added }
   } catch (error) {
     console.error('Pull failed:', error)
