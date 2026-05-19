@@ -5,13 +5,20 @@ import { Transaction, categoryIcons, categoryLabels } from "@/lib/types"
 
 interface TransactionItemProps {
   transaction: Transaction
+  onEdit?: (transaction: Transaction) => void
 }
 
-export function TransactionItem({ transaction }: TransactionItemProps) {
+export function TransactionItem({ transaction, onEdit }: TransactionItemProps) {
   const isIncome = transaction.type === "in"
   
   return (
-    <div className="flex items-center gap-4 p-4 bg-card rounded-xl shadow-earth active:bg-secondary transition-colors">
+    <div
+      onClick={() => onEdit?.(transaction)}
+      className={cn(
+        "flex items-center gap-4 p-4 bg-card rounded-xl shadow-earth transition-colors",
+        onEdit && "cursor-pointer active:bg-secondary"
+      )}
+    >
       {/* Category Icon */}
       <div className={cn(
         "flex items-center justify-center w-12 h-12 rounded-full text-sm font-bold",

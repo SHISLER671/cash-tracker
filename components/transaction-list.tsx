@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 interface TransactionListProps {
   transactions: Transaction[]
   onRefresh?: () => Promise<void>
+  onEdit?: (transaction: Transaction) => void
 }
 
 function groupTransactionsByDate(transactions: Transaction[]) {
@@ -40,7 +41,7 @@ function groupTransactionsByDate(transactions: Transaction[]) {
   return groups
 }
 
-export function TransactionList({ transactions, onRefresh }: TransactionListProps) {
+export function TransactionList({ transactions, onRefresh, onEdit }: TransactionListProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -114,9 +115,9 @@ export function TransactionList({ transactions, onRefresh }: TransactionListProp
       <div className="p-4 space-y-6">
         {hasTransactions ? (
           <>
-            <TransactionGroup label="Today" transactions={groups.today} />
-            <TransactionGroup label="Yesterday" transactions={groups.yesterday} />
-            <TransactionGroup label="Earlier" transactions={groups.earlier} />
+            <TransactionGroup label="Today" transactions={groups.today} onEdit={onEdit} />
+            <TransactionGroup label="Yesterday" transactions={groups.yesterday} onEdit={onEdit} />
+            <TransactionGroup label="Earlier" transactions={groups.earlier} onEdit={onEdit} />
           </>
         ) : (
           <div className="flex flex-col items-center justify-center py-16 text-center">

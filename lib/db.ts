@@ -56,8 +56,20 @@ export const deleteReceipt = async (id: number) => {
   return await db.receipts.delete(id)
 }
 
-export const bulkDeleteReceipts = async (ids: number[]) => {
-  return await db.receipts.bulkDelete(ids)
+export const bulkDeleteReceipts = async (ids: number[]) => await db.receipts.bulkDelete(ids)
+
+// Draft helpers (needed by /transaction page)
+export const saveDraft = async (draft: Partial<Transaction>) => {
+  localStorage.setItem('transaction_draft', JSON.stringify(draft))
+}
+
+export const getDraft = async (): Promise<Partial<Transaction> | null> => {
+  const saved = localStorage.getItem('transaction_draft')
+  return saved ? JSON.parse(saved) : null
+}
+
+export const clearDraft = async () => {
+  localStorage.removeItem('transaction_draft')
 }
 
 export type { Transaction, Receipt }
