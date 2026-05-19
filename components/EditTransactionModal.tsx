@@ -59,19 +59,16 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
   const handleDelete = async () => {
     if (form.id === undefined) return
 
-    // First delete from local DB
     await db.transactions.delete(form.id)
 
-    // Show undo toast
     toast.error('Transaction deleted', {
-      description: 'This action cannot be undone later',
+      description: 'This can be undone for 5 seconds',
       action: {
         label: 'Undo',
         onClick: async () => {
-          // Restore the transaction
           await db.transactions.add(form)
           toast.success('Transaction restored')
-          onSave() // refresh list
+          onSave()
         },
       },
       duration: 5000,
@@ -138,7 +135,7 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
               <input
                 type="text"
                 value={form.category}
-                placeholder="food, gas, coffee, groceries..."
+                placeholder="food, gas, coffee..."
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className="w-full p-4 rounded-2xl border"
               />
