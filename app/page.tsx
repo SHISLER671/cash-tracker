@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useLiveQuery } from "dexie-react-hooks"
+import { useEffect } from "react"
 import { Settings, Clock, Inbox } from "lucide-react"
 import { db } from "@/lib/db"
 import { CashDisplay } from "@/components/cash-display"
@@ -9,6 +10,7 @@ import { BudgetProgress } from "@/components/budget-progress"
 import { AddButton } from "@/components/add-button"
 import { EmptyState } from "@/components/empty-state"
 import { format } from "date-fns"
+import { autoPullIfNeeded } from "@/lib/supabase/sync"
 
 // Default budget limits
 const budgetLimits = {
@@ -21,6 +23,11 @@ const budgetLimits = {
 export default function Home() {
   const currentMonth = format(new Date(), "yyyy-MM")
 
+  // Auto-pull new transactions when the app opens
+  useEffect(() => {
+    autoPullIfNeeded()
+  }, [])
+
   // Get transaction count
   const transactionCount = useLiveQuery(async () => {
     return await db.transactions.count()
@@ -31,7 +38,7 @@ export default function Home() {
     return await db.receipts.where('processed').equals(0).count()
   }, [])
 
-  // Calculate cash on hand from all transactions
+  // Calculate cash on hand
   const cashOnHand = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
     return all.reduce((acc, t) => acc + (t.type === "in" ? t.amount : -t.amount), 0)
@@ -49,18 +56,10 @@ export default function Home() {
     )
 
     return {
-      gas: monthlyTransactions
-        .filter((t) => t.category === "gas")
-        .reduce((sum, t) => sum + t.amount, 0),
-      food: monthlyTransactions
-        .filter((t) => t.category === "food")
-        .reduce((sum, t) => sum + t.amount, 0),
-      medical: monthlyTransactions
-        .filter((t) => t.category === "medical")
-        .reduce((sum, t) => sum + t.amount, 0),
-      other: monthlyTransactions
-        .filter((t) => t.category === "other")
-        .reduce((sum, t) => sum + t.amount, 0),
+      gas: monthlyTransactions.filter((t) => t.category === "gas").reduce((sum, t) => sum + t.amount, 0),
+      food: monthlyTransactions.filter((t) => t.category === "food").reduce((sum, t) => sum + t.amount, 0),
+      medical: monthlyTransactions.filter((t) => t.category === "medical").reduce((sum, t) => sum + t.amount, 0),
+      other: monthlyTransactions.filter((t) => t.category === "other").reduce((sum, t) => sum + t.amount, 0),
     }
   }, [currentMonth])
 
