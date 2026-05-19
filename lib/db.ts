@@ -5,7 +5,7 @@ export interface Transaction {
   date: Date
   amount: number
   merchant: string
-  category: string
+  category: string          // now fully free-text
   type: 'in' | 'out'
   note?: string
   synced?: boolean
@@ -18,28 +18,22 @@ export interface Receipt {
   merchant?: string
   category?: string
   createdAt: Date
-  processed: number // 0 = inbox, 1 = processed
+  processed: number
 }
 
-// Create DB
 export const db = new Dexie('CashTracker') as Dexie & {
   transactions: EntityTable<Transaction, 'id'>
   receipts: EntityTable<Receipt, 'id'>
 }
 
-// Use a high version so it upgrades cleanly
-db.version(32).stores({
+db.version(33).stores({
   transactions: '++id, date, amount, category, type, synced',
   receipts: '++id, createdAt, processed'
 })
 
-// Receipt helper functions (exactly what capture + inbox expect)
+// Receipt helpers (unchanged)
 export const addReceiptToInbox = async (receipt: Omit<Receipt, 'id' | 'createdAt'>) => {
-  return await db.receipts.add({
-    ...receipt,
-    createdAt: new Date(),
-    processed: 0,
-  })
+  return await db.receipts.add({ ...receipt, createdAt: new Date(), processed: 0 })
 }
 
 export const markReceiptProcessed = async (id: number, category: string) => {
@@ -52,22 +46,17 @@ export const bulkMarkReceiptsProcessed = async (ids: number[], category: string)
   )
 }
 
-export const deleteReceipt = async (id: number) => {
-  return await db.receipts.delete(id)
-}
-
+export const deleteReceipt = async (id: number) => await db.receipts.delete(id)
 export const bulkDeleteReceipts = async (ids: number[]) => await db.receipts.bulkDelete(ids)
 
-// Draft helpers (needed by /transaction page)
+// Draft helpers (for transaction page)
 export const saveDraft = async (draft: Partial<Transaction>) => {
   localStorage.setItem('transaction_draft', JSON.stringify(draft))
 }
-
 export const getDraft = async (): Promise<Partial<Transaction> | null> => {
   const saved = localStorage.getItem('transaction_draft')
   return saved ? JSON.parse(saved) : null
 }
-
 export const clearDraft = async () => {
   localStorage.removeItem('transaction_draft')
 }
