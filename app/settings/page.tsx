@@ -248,7 +248,7 @@ export default function SettingsPage() {
                     <>
                       SHARE
                       {syncStatus.pendingCount > 0 && (
-                        <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">
+                        <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
                           {syncStatus.pendingCount}
                         </span>
                       )}
