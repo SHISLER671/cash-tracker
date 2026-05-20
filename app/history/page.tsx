@@ -31,16 +31,15 @@ function HistoryPageContent() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [possibleDuplicates, setPossibleDuplicates] = useState<any[]>([])
 
-  // Auto-pull on mount + load duplicates
+  // Auto-pull and load duplicates on every History page visit
   useEffect(() => {
     autoPullIfNeeded()
 
-    const reviewMode = searchParams.get("review")
-    if (reviewMode === "duplicates") {
-      const stored = localStorage.getItem("possibleDuplicates")
-      if (stored) setPossibleDuplicates(JSON.parse(stored))
+    const stored = localStorage.getItem("possibleDuplicates")
+    if (stored) {
+      setPossibleDuplicates(JSON.parse(stored))
     }
-  }, [searchParams])
+  }, [])
 
   const dbTransactions = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
@@ -84,6 +83,7 @@ function HistoryPageContent() {
         <div className="w-11" />
       </header>
 
+      {/* Duplicate banner — always shows if duplicates exist */}
       {possibleDuplicates.length > 0 && (
         <div className="mx-4 mt-4 bg-amber-100 border border-amber-300 rounded-2xl p-4">
           <p className="font-semibold text-amber-800">Possible duplicates detected ({possibleDuplicates.length})</p>
