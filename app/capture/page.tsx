@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useRef, useEffect, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, X, RefreshCw, Pencil, Check, Camera, Upload } from "lucide-react"
+import { ArrowLeft, X, RefreshCw, Pencil, Check, Upload } from "lucide-react"
 import { CameraViewfinder } from "@/components/camera-viewfinder"
 import { ProcessingOverlay } from "@/components/processing-overlay"
 import { scanReceipt } from "@/lib/ocr"
@@ -26,30 +26,51 @@ const categoryConfig = {
   other: { label: "OTHER", color: "bg-muted-foreground" },
 }
 
-export default function CapturePage() {
+function CapturePageSkeleton() {
+  return (
+    <div className="min-h-screen bg-foreground flex flex-col">
+      <header className="flex items-center justify-between p-4 bg-foreground/90 backdrop-blur-sm">
+        <div className="h-11 w-11 rounded-full bg-card/20 animate-pulse" />
+        <div className="h-6 w-32 rounded bg-card/20 animate-pulse" />
+        <div className="w-11" />
+      </header>
+      <div className="flex-1 flex items-center justify-center text-background/70">
+        Loading...
+      </div>
+    </div>
+  )
+}
+
+function CapturePageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [state, setState] = useState<CaptureState>("camera")
   const [capturedReceipts, setCapturedReceipts] = useState<CapturedReceipt[]>([])
   const [errorMessage, setErrorMessage] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  // New: File upload ref
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Auto-open gallery if user came from bottom sheet "Upload Saved Photo"
+  useEffect(() => {
+    const mode = searchParams.get("mode")
+    if (mode === "upload") {
+      setTimeout(() => {
+        fileInputRef.current?.click()
+      }, 300)
+    }
+  }, [searchParams])
 
   const handleCapture = async (imageData: string) => {
     setState("processing")
-
     try {
       const result = await scanReceipt(imageData)
-      
       const receipt: CapturedReceipt = {
         imageData,
         amount: result.amount,
         merchant: result.merchant,
         date: result.date,
       }
-      
       setCapturedReceipts(prev => [...prev, receipt])
       setState("camera")
     } catch (error) {
@@ -59,27 +80,17 @@ export default function CapturePage() {
     }
   }
 
-  // New: Upload from gallery
-  const handleUploadClick = () => {
-    fileInputRef.current?.click()
-  }
-
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     setState("processing")
-
     const reader = new FileReader()
     reader.onload = async (event) => {
       const imageData = event.target?.result as string
-      if (imageData) {
-        await handleCapture(imageData)
-      }
+      if (imageData) await handleCapture(imageData)
     }
     reader.readAsDataURL(file)
-
-    // Reset input so the same file can be selected again
     e.target.value = ""
   }
 
@@ -89,15 +100,6 @@ export default function CapturePage() {
       return
     }
     setState("bulk-categorize")
-  }
-
-  const handleRetry = () => {
-    setErrorMessage("")
-    setState("camera")
-  }
-
-  const handleManualEntry = () => {
-    router.push("/transaction")
   }
 
   const handleSaveToInbox = async () => {
@@ -132,46 +134,40 @@ export default function CapturePage() {
 
   return (
     <div className="min-h-screen bg-foreground flex flex-col">
-      {/* Header */}
       <header className="flex items-center justify-between p-4 bg-foreground/90 backdrop-blur-sm">
         <Link href="/" className="flex h-11 w-11 items-center justify-center rounded-full bg-card/20 text-background transition-all hover:bg-card/30 active:scale-95">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-background font-semibold">
-          {state === "bulk-categorize" ? "Categorize Receipts" : "Capture Receipts"}
-        </h1>
+        <h1 className="text-background font-semibold">Add Receipt</h1>
         <div className="w-11" />
       </header>
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col relative">
         {state === "error" ? (
           <div className="flex-1 flex flex-col items-center justify-center p-6 bg-background">
-            <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-earth-lg">
-              <div className="flex justify-center mb-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-expense/10">
-                  <X className="h-8 w-8 text-expense" />
-                </div>
-              </div>
-              <h2 className="text-xl font-bold text-foreground text-center mb-2">{"Can't read receipt"}</h2>
-              <p className="text-muted-foreground text-center text-sm mb-6">{errorMessage}</p>
-              <div className="flex flex-col gap-3">
-                <button onClick={handleManualEntry} className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-primary text-primary-foreground font-semibold transition-all hover:brightness-95 active:scale-98">
-                  <Pencil className="h-5 w-5" />
-                  ENTER MANUALLY
-                </button>
-                <button onClick={handleRetry} className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-secondary text-foreground font-semibold transition-all hover:bg-muted active:scale-98">
-                  <RefreshCw className="h-5 w-5" />
-                  TRY AGAIN
-                </button>
-              </div>
+            <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-earth-lg text-center">
+              <X className="h-12 w-12 text-expense mx-auto mb-4" />
+              <h2 className="text-xl font-bold mb-2">{"Can't read receipt"}</h2>
+              <p className="text-muted-foreground mb-6">{errorMessage}</p>
+              <button
+                onClick={() => { setErrorMessage(""); setState("camera") }}
+                className="w-full py-4 rounded-xl bg-secondary text-foreground font-semibold mb-3"
+              >
+                TRY AGAIN
+              </button>
+              <button
+                onClick={() => router.push("/transaction")}
+                className="w-full py-4 rounded-xl bg-primary text-primary-foreground font-semibold"
+              >
+                ENTER MANUALLY
+              </button>
             </div>
           </div>
         ) : state === "bulk-categorize" ? (
           <div className="flex-1 flex flex-col bg-background p-4">
             <div className="mb-6">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                {capturedReceipts.length} Receipt{capturedReceipts.length !== 1 ? 's' : ''} Captured
+                {capturedReceipts.length} Receipt{capturedReceipts.length !== 1 ? "s" : ""} Captured
               </h2>
               <div className="flex gap-2 overflow-x-auto pb-2">
                 {capturedReceipts.map((receipt, index) => (
@@ -206,27 +202,21 @@ export default function CapturePage() {
         ) : (
           <>
             <CameraViewfinder onCapture={handleCapture} isProcessing={state === "processing"} />
-
             {state === "processing" && <ProcessingOverlay />}
 
-            {/* Bottom controls - now includes Upload button */}
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-foreground via-foreground/90 to-transparent">
-              <div className="flex items-center justify-between gap-3">
-                {/* Upload from Gallery */}
+              <div className="flex gap-3">
                 <button
-                  onClick={handleUploadClick}
-                  disabled={state === "processing"}
-                  className="flex-1 flex items-center justify-center gap-2 bg-card text-foreground py-4 rounded-3xl font-semibold transition-all hover:bg-secondary active:scale-95 disabled:opacity-50"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 flex items-center justify-center gap-2 bg-card text-foreground py-4 rounded-3xl font-semibold active:scale-95 transition-all"
                 >
                   <Upload className="h-5 w-5" />
-                  UPLOAD PHOTO
+                  UPLOAD SAVED PHOTO
                 </button>
 
-                {/* Done button */}
                 <button
                   onClick={handleDone}
-                  disabled={state === "processing"}
-                  className="flex-1 flex items-center justify-center gap-2 bg-income text-white py-4 rounded-3xl font-semibold transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 bg-income text-white py-4 rounded-3xl font-semibold active:scale-95 transition-all"
                 >
                   <Check className="h-5 w-5" />
                   DONE {capturedReceipts.length > 0 && `(${capturedReceipts.length})`}
@@ -234,7 +224,6 @@ export default function CapturePage() {
               </div>
             </div>
 
-            {/* Hidden file input */}
             <input
               ref={fileInputRef}
               type="file"
@@ -246,5 +235,13 @@ export default function CapturePage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function CapturePage() {
+  return (
+    <Suspense fallback={<CapturePageSkeleton />}>
+      <CapturePageContent />
+    </Suspense>
   )
 }
