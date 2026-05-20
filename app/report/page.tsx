@@ -49,30 +49,31 @@ export default function ReportPage() {
     return monthly.reduce((sum, t) => sum + t.amount, 0)
   }, [])
 
-  // Improved AI prompt with clear rules
+  // Improved AI insights with better error handling
   useEffect(() => {
     const generateInsights = async () => {
-      if (!thisMonthData || lastMonthTotal === undefined) return
+      if (!thisMonthData?.total && lastMonthTotal === undefined) {
+        setInsights("No spending data yet this month.")
+        setLoadingInsights(false)
+        return
+      }
 
       setLoadingInsights(true)
 
       const prompt = `You are a kind, encouraging financial coach helping a couple save money.
 
 This month's spending:
-Total: $${thisMonthData.total.toFixed(2)}
-Last month: $${lastMonthTotal.toFixed(2)}
+Total: $${thisMonthData?.total.toFixed(2) ?? "0.00"}
+Last month: $${lastMonthTotal?.toFixed(2) ?? "0.00"}
 
 Breakdown:
-${Object.entries(thisMonthData.byCategory).map(([cat, amt]) => `- ${cat}: $${(amt as number).toFixed(2)}`).join("\n")}
+${Object.entries(thisMonthData?.byCategory || {}).map(([cat, amt]) => `- ${cat}: $${(amt as number).toFixed(2)}`).join("\n")}
 
-Rules for your response:
-- Be positive and supportive, never judgmental
-- Give 2-3 short, actionable insights
-- Focus on easy ways they can save money this month
-- Point out trends (e.g. "You're spending more on food than last month")
-- Suggest one or two realistic changes they could make
-
-Keep it warm, friendly, and concise.`
+Rules:
+- Be positive and supportive
+- Give 2-3 short, actionable ideas to save money
+- Point out easy wins or trends
+- Keep it friendly and concise`
 
       try {
         const response = await fetch("https://api.venice.ai/api/v1/chat/completions", {
@@ -89,10 +90,14 @@ Keep it warm, friendly, and concise.`
           }),
         })
 
+        if (!response.ok) throw new Error("API error")
+
         const data = await response.json()
-        setInsights(data.choices[0].message.content.trim())
+        const text = data.choices[0].message.content.trim()
+        setInsights(text || "You're doing great tracking your spending!")
       } catch (e) {
-        setInsights("You're doing great by tracking your spending! Keep going — small changes add up.")
+        console.error("AI insights failed:", e)
+        setInsights("You're doing great by tracking your spending! Small changes add up over time.")
       } finally {
         setLoadingInsights(false)
       }
