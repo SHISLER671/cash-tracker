@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useRef, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, X, RefreshCw, Pencil, Check, Camera, Upload } from "lucide-react"
 import { CameraViewfinder } from "@/components/camera-viewfinder"
@@ -28,14 +28,23 @@ const categoryConfig = {
 
 export default function CapturePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [state, setState] = useState<CaptureState>("camera")
   const [capturedReceipts, setCapturedReceipts] = useState<CapturedReceipt[]>([])
   const [errorMessage, setErrorMessage] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  // New: File upload ref
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Auto-trigger upload if user came from bottom sheet "Upload Saved Photo"
+  useEffect(() => {
+    const mode = searchParams.get("mode")
+    if (mode === "upload") {
+      setTimeout(() => {
+        fileInputRef.current?.click()
+      }, 300)
+    }
+  }, [searchParams])
 
   const handleCapture = async (imageData: string) => {
     setState("processing")
@@ -59,7 +68,7 @@ export default function CapturePage() {
     }
   }
 
-  // New: Upload from gallery
+  // Upload from gallery
   const handleUploadClick = () => {
     fileInputRef.current?.click()
   }
@@ -138,7 +147,7 @@ export default function CapturePage() {
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-background font-semibold">
-          {state === "bulk-categorize" ? "Categorize Receipts" : "Capture Receipts"}
+          {state === "bulk-categorize" ? "Categorize Receipts" : "Add Receipt"}
         </h1>
         <div className="w-11" />
       </header>
@@ -209,24 +218,21 @@ export default function CapturePage() {
 
             {state === "processing" && <ProcessingOverlay />}
 
-            {/* Bottom controls - now includes Upload button */}
+            {/* Bottom controls with Upload button always visible */}
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-foreground via-foreground/90 to-transparent">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex gap-3">
                 {/* Upload from Gallery */}
                 <button
                   onClick={handleUploadClick}
-                  disabled={state === "processing"}
-                  className="flex-1 flex items-center justify-center gap-2 bg-card text-foreground py-4 rounded-3xl font-semibold transition-all hover:bg-secondary active:scale-95 disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 bg-card text-foreground py-4 rounded-3xl font-semibold active:scale-95 transition-all"
                 >
                   <Upload className="h-5 w-5" />
-                  UPLOAD PHOTO
+                  UPLOAD SAVED PHOTO
                 </button>
 
-                {/* Done button */}
                 <button
                   onClick={handleDone}
-                  disabled={state === "processing"}
-                  className="flex-1 flex items-center justify-center gap-2 bg-income text-white py-4 rounded-3xl font-semibold transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 bg-income text-white py-4 rounded-3xl font-semibold active:scale-95 transition-all"
                 >
                   <Check className="h-5 w-5" />
                   DONE {capturedReceipts.length > 0 && `(${capturedReceipts.length})`}
