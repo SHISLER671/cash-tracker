@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect, useCallback, Suspense } from "react"
+import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
-import { X, Check, ArrowLeft } from "lucide-react"
+import { X, Check, ArrowLeft, Upload } from "lucide-react"
 import { db, saveDraft, getDraft, clearDraft } from "@/lib/db"
-import { type Category } from "@/components/category-buttons"
+import { scanReceipt } from "@/lib/ocr"
 
-const categories: { id: Category; label: string; icon: string }[] = [
+const categories: { id: string; label: string; icon: string }[] = [
   { id: "gas", label: "GAS", icon: "GAS" },
   { id: "food", label: "FOOD", icon: "FOOD" },
   { id: "medical", label: "MED", icon: "MED" },
@@ -47,10 +47,12 @@ function TransactionPageSkeleton() {
 function TransactionPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [type, setType] = useState<"in" | "out">("out")
   const [amount, setAmount] = useState("")
-  const [category, setCategory] = useState<Category | null>(null)
+  const [category, setCategory] = useState<string | null>(null)
   const [note, setNote] = useState("")
   const [selectedDate, setSelectedDate] = useState<"today" | "yesterday" | "other">("today")
   const [isSaving, setIsSaving] = useState(false)
@@ -80,6 +82,33 @@ function TransactionPageContent() {
     }
     checkDraft()
   }, [])
+
+  // Upload from gallery
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      const imageData = event.target?.result as string
+      if (!imageData) return
+
+      try {
+        const result = await scanReceipt(imageData)
+        if (result.amount > 0) {
+          setAmount(result.amount.toFixed(2))
+        }
+      } catch (err) {
+        console.warn("AI scan failed on uploaded photo", err)
+      }
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ""
+  }
 
   // Auto-save draft when leaving page or backgrounding
   useEffect(() => {
@@ -159,7 +188,7 @@ function TransactionPageContent() {
     }
   }, [amount])
 
-  const handleCategorySelect = (cat: Category) => {
+  const handleCategorySelect = (cat: string) => {
     setCategory(cat)
     setStep(3)
   }
@@ -328,6 +357,17 @@ function TransactionPageContent() {
             </p>
           </div>
 
+          {/* Upload Receipt Button */}
+          <div className="px-4">
+            <button
+              onClick={handleUploadClick}
+              className="w-full flex items-center justify-center gap-3 py-4 rounded-3xl bg-card text-foreground font-semibold shadow-earth hover:bg-secondary transition-all active:scale-95"
+            >
+              <Upload className="h-5 w-5" />
+              UPLOAD RECEIPT PHOTO
+            </button>
+          </div>
+
           {/* Number Pad */}
           <div className="flex-1 flex flex-col justify-end p-4">
             <div className="grid grid-cols-3 gap-2">
@@ -474,6 +514,15 @@ function TransactionPageContent() {
           </div>
         </div>
       )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
     </div>
   )
 }
