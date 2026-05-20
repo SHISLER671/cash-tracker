@@ -61,7 +61,22 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
   const handleDelete = async () => {
     if (form.id === undefined) return
 
+    // Delete from local Dexie
     await db.transactions.delete(form.id)
+
+    // Also delete matching record from Supabase
+    try {
+      if (supabase) {
+        await supabase
+          .from('shared_transactions')
+          .delete()
+          .eq('date', form.date.toISOString())
+          .eq('amount', form.amount)
+          .eq('category', form.category)
+      }
+    } catch (e) {
+      console.warn('Supabase delete failed (will be cleaned on next sync)', e)
+    }
 
     toast.error('Transaction deleted', {
       description: 'This can be undone for 5 seconds',
