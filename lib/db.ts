@@ -26,8 +26,8 @@ export const db = new Dexie('CashTracker') as Dexie & {
   receipts: EntityTable<Receipt, 'id'>
 }
 
-// Bump version to force upgrade on your phone
-db.version(34).stores({
+// Force a clean upgrade
+db.version(35).stores({
   transactions: '++id, date, amount, category, type, synced',
   receipts: '++id, createdAt, processed'
 })
@@ -42,9 +42,7 @@ export const markReceiptProcessed = async (id: number, category: string) => {
 }
 
 export const bulkMarkReceiptsProcessed = async (ids: number[], category: string) => {
-  return await db.receipts.bulkUpdate(
-    ids.map(id => ({ key: id, changes: { processed: 1, category } }))
-  )
+  return await db.receipts.bulkUpdate(ids.map(id => ({ key: id, changes: { processed: 1, category } })))
 }
 
 export const deleteReceipt = async (id: number) => await db.receipts.delete(id)
