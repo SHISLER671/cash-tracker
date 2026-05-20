@@ -5,7 +5,7 @@ export interface Transaction {
   date: Date
   amount: number
   merchant: string
-  category: string          // now fully free-text
+  category: string
   type: 'in' | 'out'
   note?: string
   synced?: boolean
@@ -26,12 +26,13 @@ export const db = new Dexie('CashTracker') as Dexie & {
   receipts: EntityTable<Receipt, 'id'>
 }
 
-db.version(33).stores({
+// Bump version to force upgrade on your phone
+db.version(34).stores({
   transactions: '++id, date, amount, category, type, synced',
   receipts: '++id, createdAt, processed'
 })
 
-// Receipt helpers (unchanged)
+// Receipt helpers
 export const addReceiptToInbox = async (receipt: Omit<Receipt, 'id' | 'createdAt'>) => {
   return await db.receipts.add({ ...receipt, createdAt: new Date(), processed: 0 })
 }
@@ -49,7 +50,7 @@ export const bulkMarkReceiptsProcessed = async (ids: number[], category: string)
 export const deleteReceipt = async (id: number) => await db.receipts.delete(id)
 export const bulkDeleteReceipts = async (ids: number[]) => await db.receipts.bulkDelete(ids)
 
-// Draft helpers (for transaction page)
+// Draft helpers
 export const saveDraft = async (draft: Partial<Transaction>) => {
   localStorage.setItem('transaction_draft', JSON.stringify(draft))
 }
