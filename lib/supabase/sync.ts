@@ -1,144 +1,117 @@
-import { db } from '@/lib/db'
-import { supabase, isSupabaseConfigured } from './client'
+import { supabase } from "./client"
+import { db, type Transaction } from "@/lib/db"
+import { toast } from "sonner"
 
-export interface SyncStatus {
-  lastPushed: Date | null
-  lastPulled: Date | null
+export type SyncStatus = {
+  lastPushed: string | null
+  lastPulled: string | null
   pendingCount: number
 }
 
-export function getSyncStatus(): SyncStatus {
-  if (typeof window === 'undefined') return { lastPushed: null, lastPulled: null, pendingCount: 0 }
-  
-  const stored = localStorage.getItem('cashtracker_sync_status')
-  if (!stored) return { lastPushed: null, lastPulled: null, pendingCount: 0 }
-  
-  const parsed = JSON.parse(stored)
-  return {
-    lastPushed: parsed.lastPushed ? new Date(parsed.lastPushed) : null,
-    lastPulled: parsed.lastPulled ? new Date(parsed.lastPulled) : null,
-    pendingCount: parsed.pendingCount ?? 0,
-  }
-}
+export async function pushToPartner(transactions: Transaction[]) {
+  if (!supabase) return
 
-function saveSyncStatus(status: Partial<SyncStatus>) {
-  if (typeof window === 'undefined') return
-  const current = getSyncStatus()
-  const updated = { ...current, ...status }
-  localStorage.setItem('cashtracker_sync_status', JSON.stringify(updated))
-}
+  const toPush = transactions.filter(t => !t.synced)
 
-/** Auto-pull when app opens */
-export async function autoPullIfNeeded() {
-  if (!isSupabaseConfigured || !supabase) return
-  
-  const lastPulled = getSyncStatus().lastPulled || new Date(0)
-  const minutesSinceLastPull = (Date.now() - lastPulled.getTime()) / 1000 / 60
-  
-  if (minutesSinceLastPull > 5) {
-    const result = await pullFromPartner()
-    if (result.success && result.count > 0) {
-      console.log(`✅ Auto-pulled ${result.count} new transactions`)
+  for (const t of toPush) {
+    const { error } = await supabase.from("shared_transactions").insert({
+      date: t.date.toISOString(),
+      amount: t.amount,
+      merchant: t.merchant,
+      category: t.category,
+      type: t.type,
+      note: t.note || null,
+      device_id: `web-${Date.now()}`,
+    })
+    if (!error) {
+      await db.transactions.update(t.id!, { synced: true })
     }
   }
 }
 
-/** Push new transactions */
-export async function pushToPartner(): Promise<{ success: boolean; count: number; error?: string }> {
-  if (!isSupabaseConfigured || !supabase) {
-    return { success: false, count: 0, error: 'Supabase not configured' }
-  }
+export async function pullFromPartner() {
+  if (!supabase) return
 
-  try {
-    const transactions = await db.transactions.toArray()
-    const lastPushed = getSyncStatus().lastPushed
+  const { data, error } = await supabase
+    .from("shared_transactions")
+    .select("*")
+    .order("created_at", { ascending: false })
 
-    const newTransactions = lastPushed
-      ? transactions.filter(t => new Date(t.date) > lastPushed)
-      : transactions
+  if (error || !data) return
 
-    if (newTransactions.length === 0) {
-      saveSyncStatus({ lastPushed: new Date(), pendingCount: 0 })
-      return { success: true, count: 0 }
-    }
+  const existing = await db.transactions.toArray()
+  const existingMap = new Map(existing.map(t => [`${t.date.toISOString().split("T")[0]}-${t.amount}-${t.category}`, t]))
 
-    const { error } = await supabase
-      .from('shared_transactions')
-      .insert(newTransactions.map(t => ({
-        date: t.date.toISOString(),
-        amount: t.amount,
-        category: t.category,
-        type: t.type,
-        note: t.note || null,
-        device_id: `web-${Date.now()}`
-      })))
+  const newTransactions: Transaction[] = []
+  const possibleDuplicates: any[] = []
 
-    if (error) throw error
+  for (const remote of data) {
+    const key = `${new Date(remote.date).toISOString().split("T")[0]}-${remote.amount}-${remote.category}`
 
-    saveSyncStatus({ lastPushed: new Date(), pendingCount: 0 })
-    return { success: true, count: newTransactions.length }
-  } catch (error) {
-    console.error('Push failed:', error)
-    return { success: false, count: 0, error: error instanceof Error ? error.message : 'Push failed' }
-  }
-}
+    const localMatch = existingMap.get(key)
 
-/** Pull from Supabase */
-export async function pullFromPartner(): Promise<{ success: boolean; count: number; error?: string }> {
-  if (!isSupabaseConfigured || !supabase) {
-    return { success: false, count: 0, error: 'Supabase not configured' }
-  }
+    if (localMatch) {
+      // Rule-based duplicate check
+      const daysDiff = Math.abs(new Date(remote.date).getTime() - localMatch.date.getTime()) / (1000 * 3600 * 24)
+      const amountDiff = Math.abs(remote.amount - localMatch.amount)
 
-  try {
-    const lastPulled = getSyncStatus().lastPulled || new Date(0)
-    
-    const { data, error } = await supabase
-      .from('shared_transactions')
-      .select('*')
-      .gt('date', lastPulled.toISOString())
-      .order('date', { ascending: true })
-
-    if (error) throw error
-    if (!data || data.length === 0) {
-      saveSyncStatus({ lastPulled: new Date() })
-      return { success: true, count: 0 }
-    }
-
-    let added = 0
-    for (const remote of data) {
-      const existing = await db.transactions
-        .where('date')
-        .equals(new Date(remote.date))
-        .and(t => t.amount === Number(remote.amount) && t.category === remote.category)
-        .first()
-
-      if (!existing) {
-        await db.transactions.add({
-          date: new Date(remote.date),
-          amount: Number(remote.amount),
-          category: remote.category,
-          type: remote.type as 'in' | 'out',
-          note: remote.note || undefined,
+      if (daysDiff < 1 && amountDiff <= 3) {
+        possibleDuplicates.push({
+          local: localMatch,
+          remote: remote,
+          reason: "Very similar (same day + amount)",
         })
-        added++
+        continue // skip auto-add
       }
     }
 
-    saveSyncStatus({ lastPulled: new Date() })
-    return { success: true, count: added }
-  } catch (error) {
-    console.error('Pull failed:', error)
-    return { success: false, count: 0, error: error instanceof Error ? error.message : 'Pull failed' }
+    newTransactions.push({
+      id: undefined,
+      date: new Date(remote.date),
+      amount: remote.amount,
+      merchant: remote.merchant || "",
+      category: remote.category,
+      type: remote.type,
+      note: remote.note || undefined,
+      synced: true,
+    })
+  }
+
+  // Insert new transactions
+  if (newTransactions.length > 0) {
+    await db.transactions.bulkAdd(newTransactions)
+  }
+
+  // Store possible duplicates for review
+  if (possibleDuplicates.length > 0) {
+    localStorage.setItem("possibleDuplicates", JSON.stringify(possibleDuplicates))
+    toast.warning(`${possibleDuplicates.length} possible duplicate(s) detected`, {
+      description: "Tap to review",
+      action: { label: "Review", onClick: () => window.location.href = "/history?review=duplicates" },
+    })
+  }
+
+  // Update last pulled time
+  localStorage.setItem("lastPulled", new Date().toISOString())
+}
+
+export function getSyncStatus(): SyncStatus {
+  return {
+    lastPushed: localStorage.getItem("lastPushed"),
+    lastPulled: localStorage.getItem("lastPulled"),
+    pendingCount: 0, // we can calculate this later if needed
   }
 }
 
-export async function getPendingPushCount(): Promise<number> {
-  try {
-    const transactions = await db.transactions.toArray()
-    const lastPushed = getSyncStatus().lastPushed
-    if (!lastPushed) return transactions.length
-    return transactions.filter(t => new Date(t.date) > lastPushed).length
-  } catch {
-    return 0
+export async function autoPullIfNeeded() {
+  const lastPulled = localStorage.getItem("lastPulled")
+  if (!lastPulled) {
+    await pullFromPartner()
+    return
+  }
+
+  const minutesSinceLastPull = (Date.now() - new Date(lastPulled).getTime()) / (1000 * 60)
+  if (minutesSinceLastPull > 5) {
+    await pullFromPartner()
   }
 }
