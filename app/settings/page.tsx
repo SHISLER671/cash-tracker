@@ -16,13 +16,6 @@ const categoryIcons: Record<string, string> = {
   other: "OTHER",
 }
 
-const categoryEmojis: Record<string, string> = {
-  gas: "GAS",
-  food: "FOOD",
-  medical: "MED",
-  other: "OTHER",
-}
-
 // Default budgets
 const defaultBudgets = {
   gas: 150,
@@ -41,44 +34,38 @@ export default function SettingsPage() {
   const [isPulling, setIsPulling] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
 
-  // Load sync status on mount
+  // Load sync status
   useEffect(() => {
     setSyncStatus(getSyncStatus())
   }, [])
 
-  // Get budgets from database
+  // Get budgets
   const budgets = useLiveQuery(async () => {
     const stored = await db.budgets.where("month").equals(currentMonth).toArray()
     const budgetMap: Record<string, number> = { ...defaultBudgets }
-    stored.forEach((b) => {
-      budgetMap[b.category] = b.limit
-    })
+    stored.forEach((b) => { budgetMap[b.category] = b.limit })
     return budgetMap
   }, [currentMonth])
 
-  // Get spending for current month
+  // Get spending
   const spending = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
     const monthStart = new Date(currentMonth + "-01")
     const monthEnd = new Date(monthStart)
     monthEnd.setMonth(monthEnd.getMonth() + 1)
 
-    const monthlyTransactions = all.filter(
-      (t) => t.date >= monthStart && t.date < monthEnd && t.type === "out"
-    )
+    const monthly = all.filter(t => t.date >= monthStart && t.date < monthEnd && t.type === "out")
 
     return {
-      gas: monthlyTransactions.filter((t) => t.category === "gas").reduce((sum, t) => sum + t.amount, 0),
-      food: monthlyTransactions.filter((t) => t.category === "food").reduce((sum, t) => sum + t.amount, 0),
-      medical: monthlyTransactions.filter((t) => t.category === "medical").reduce((sum, t) => sum + t.amount, 0),
-      other: monthlyTransactions.filter((t) => t.category === "other").reduce((sum, t) => sum + t.amount, 0),
+      gas: monthly.filter(t => t.category === "gas").reduce((sum, t) => sum + t.amount, 0),
+      food: monthly.filter(t => t.category === "food").reduce((sum, t) => sum + t.amount, 0),
+      medical: monthly.filter(t => t.category === "medical").reduce((sum, t) => sum + t.amount, 0),
+      other: monthly.filter(t => t.category === "other").reduce((sum, t) => sum + t.amount, 0),
     }
   }, [currentMonth])
 
-  // Get receipt storage size estimate
   const storageUsed = useLiveQuery(async () => {
     const count = await db.transactions.count()
-    // Rough estimate: 2KB per transaction average
     return Math.round(count * 2)
   })
 
@@ -90,13 +77,7 @@ export default function SettingsPage() {
   const handleSaveBudget = async () => {
     if (!editingCategory) return
     const value = parseFloat(editValue) || 0
-    
-    await db.budgets.put({
-      month: currentMonth,
-      category: editingCategory as 'gas' | 'food' | 'medical' | 'other',
-      limit: value,
-    })
-    
+    await db.budgets.put({ month: currentMonth, category: editingCategory, limit: value })
     setEditingCategory(null)
     setEditValue("")
   }
@@ -104,28 +85,50 @@ export default function SettingsPage() {
   const handleClearOldReceipts = async () => {
     const ninetyDaysAgo = new Date()
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
-    
     await db.transactions.where("date").below(ninetyDaysAgo).delete()
   }
 
+  // Fixed Push
   const handlePushToPartner = async () => {
     setIsPushing(true)
     setSyncMessage(null)
-    const result = await pushToPartner()
-    setIsPushing(false)
-    setSyncStatus(getSyncStatus())
-    setSyncMessage(result.success ? `Shared ${result.count} transactions` : result.error || 'Push failed')
-    setTimeout(() => setSyncMessage(null), 3000)
+
+    try {
+      const unsynced = await db.transactions.where("synced").equals(false).toArray()
+      if (unsynced.length === 0) {
+        setSyncMessage("Nothing to share")
+        setTimeout(() => setSyncMessage(null), 2000)
+        return
+      }
+
+      await pushToPartner(unsynced)
+      setSyncMessage(`Shared ${unsynced.length} transaction${unsynced.length > 1 ? 's' : ''}`)
+    } catch (e) {
+      console.error(e)
+      setSyncMessage("Push failed")
+    } finally {
+      setIsPushing(false)
+      setSyncStatus(getSyncStatus())
+      setTimeout(() => setSyncMessage(null), 3000)
+    }
   }
 
+  // Fixed Pull
   const handlePullFromPartner = async () => {
     setIsPulling(true)
     setSyncMessage(null)
-    const result = await pullFromPartner()
-    setIsPulling(false)
-    setSyncStatus(getSyncStatus())
-    setSyncMessage(result.success ? `Received ${result.count} new transactions` : result.error || 'Pull failed')
-    setTimeout(() => setSyncMessage(null), 3000)
+
+    try {
+      await pullFromPartner()
+      setSyncMessage("Received latest transactions")
+    } catch (e) {
+      console.error(e)
+      setSyncMessage("Pull failed")
+    } finally {
+      setIsPulling(false)
+      setSyncStatus(getSyncStatus())
+      setTimeout(() => setSyncMessage(null), 3000)
+    }
   }
 
   const categories = ["gas", "food", "medical", "other"]
@@ -133,13 +136,8 @@ export default function SettingsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4">
-        {/* Header */}
         <header className="flex items-center justify-between border-b border-border py-4">
-          <button
-            onClick={() => router.back()}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
-            aria-label="Go back"
-          >
+          <button onClick={() => router.back()} className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <h1 className="text-lg font-bold text-foreground">SETTINGS</h1>
@@ -148,25 +146,13 @@ export default function SettingsPage() {
 
         {/* Monthly Budgets Section */}
         <section className="mt-6">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Monthly Budgets
-          </h2>
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Budgets</h2>
           <div className="grid grid-cols-2 gap-3">
             {categories.map((category) => (
-              <button
-                key={category}
-                onClick={() => handleEditBudget(category)}
-                className="flex flex-col items-center gap-1 rounded-xl bg-card p-4 shadow-earth transition-all hover:shadow-earth-lg active:scale-98"
-              >
-                <span className="text-xs font-semibold uppercase text-muted-foreground">
-                  {categoryIcons[category]}
-                </span>
-                <span className="text-2xl font-bold text-foreground">
-                  ${budgets?.[category] ?? defaultBudgets[category as keyof typeof defaultBudgets]}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  spent ${spending?.[category as keyof typeof spending]?.toFixed(0) ?? 0}
-                </span>
+              <button key={category} onClick={() => handleEditBudget(category)} className="flex flex-col items-center gap-1 rounded-xl bg-card p-4 shadow-earth transition-all hover:shadow-earth-lg active:scale-98">
+                <span className="text-xs font-semibold uppercase text-muted-foreground">{categoryIcons[category]}</span>
+                <span className="text-2xl font-bold text-foreground">${budgets?.[category] ?? defaultBudgets[category as keyof typeof defaultBudgets]}</span>
+                <span className="text-xs text-muted-foreground">spent ${spending?.[category as keyof typeof spending]?.toFixed(0) ?? 0}</span>
               </button>
             ))}
           </div>
@@ -174,10 +160,7 @@ export default function SettingsPage() {
 
         {/* Add Category Placeholder */}
         <section className="mt-6">
-          <button
-            disabled
-            className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-card/50 py-4 text-muted-foreground opacity-50"
-          >
+          <button disabled className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-card/50 py-4 text-muted-foreground opacity-50">
             <Plus className="h-5 w-5" />
             <span className="text-sm font-medium">ADD CATEGORY</span>
             <span className="text-xs">(Coming Soon)</span>
@@ -186,9 +169,7 @@ export default function SettingsPage() {
 
         {/* Storage Section */}
         <section className="mt-8">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Storage
-          </h2>
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Storage</h2>
           <div className="flex items-center justify-between rounded-xl bg-card p-4 shadow-earth">
             <div className="flex items-center gap-3">
               <Trash2 className="h-5 w-5 text-muted-foreground" />
@@ -197,10 +178,7 @@ export default function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Keeps last 90 days</p>
               </div>
             </div>
-            <button
-              onClick={handleClearOldReceipts}
-              className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-primary"
-            >
+            <button onClick={handleClearOldReceipts} className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-primary">
               CLEAR OLD
             </button>
           </div>
@@ -212,7 +190,7 @@ export default function SettingsPage() {
             <Users className="h-4 w-4" />
             Partner Sync
           </h2>
-          
+
           {syncMessage && (
             <div className="mb-4 rounded-lg bg-primary/10 px-4 py-2 text-sm text-foreground">
               {syncMessage}
@@ -220,7 +198,6 @@ export default function SettingsPage() {
           )}
 
           <div className="flex flex-col gap-3">
-            {/* Push to Partner */}
             <div className="rounded-xl bg-card p-4 shadow-earth">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -229,7 +206,7 @@ export default function SettingsPage() {
                     <p className="text-sm font-medium text-foreground">Share with Partner</p>
                     <p className="text-xs text-muted-foreground">
                       {syncStatus.lastPushed 
-                        ? `Last shared: ${formatDistanceToNow(syncStatus.lastPushed, { addSuffix: true })}`
+                        ? `Last shared: ${formatDistanceToNow(new Date(syncStatus.lastPushed), { addSuffix: true })}`
                         : 'Never shared'}
                     </p>
                   </div>
@@ -239,23 +216,11 @@ export default function SettingsPage() {
                   disabled={isPushing}
                   className="flex items-center gap-2 rounded-lg bg-income px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
                 >
-                  {isPushing ? (
-                    <span className="animate-pulse">SHARING...</span>
-                  ) : (
-                    <>
-                      SHARE
-                      {syncStatus.pendingCount > 0 && (
-                        <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
-                          {syncStatus.pendingCount}
-                        </span>
-                      )}
-                    </>
-                  )}
+                  {isPushing ? "SHARING..." : "SHARE"}
                 </button>
               </div>
             </div>
 
-            {/* Pull from Partner */}
             <div className="rounded-xl bg-card p-4 shadow-earth">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -264,7 +229,7 @@ export default function SettingsPage() {
                     <p className="text-sm font-medium text-foreground">Check for Updates</p>
                     <p className="text-xs text-muted-foreground">
                       {syncStatus.lastPulled 
-                        ? `Last checked: ${formatDistanceToNow(syncStatus.lastPulled, { addSuffix: true })}`
+                        ? `Last checked: ${formatDistanceToNow(new Date(syncStatus.lastPulled), { addSuffix: true })}`
                         : 'Never checked'}
                     </p>
                   </div>
@@ -274,11 +239,7 @@ export default function SettingsPage() {
                   disabled={isPulling}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
                 >
-                  {isPulling ? (
-                    <span className="animate-pulse">CHECKING...</span>
-                  ) : (
-                    'CHECK'
-                  )}
+                  {isPulling ? "CHECKING..." : "CHECK"}
                 </button>
               </div>
             </div>
@@ -299,20 +260,6 @@ export default function SettingsPage() {
               </div>
               <span className="text-xs font-medium text-muted-foreground">COMING SOON</span>
             </div>
-            <div className="flex items-center justify-between rounded-xl bg-card p-4 opacity-50 shadow-earth">
-              <div>
-                <p className="text-sm font-medium text-foreground">Crypto Wallets</p>
-                <p className="text-xs text-muted-foreground">via WalletConnect</p>
-              </div>
-              <span className="text-xs font-medium text-muted-foreground">COMING SOON</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl bg-card p-4 opacity-50 shadow-earth">
-              <div>
-                <p className="text-sm font-medium text-foreground">Web3 Login</p>
-                <p className="text-xs text-muted-foreground">via Privy</p>
-              </div>
-              <span className="text-xs font-medium text-muted-foreground">COMING SOON</span>
-            </div>
           </div>
         </section>
       </main>
@@ -326,27 +273,11 @@ export default function SettingsPage() {
             </h3>
             <div className="mb-6 flex items-center justify-center gap-2">
               <span className="text-3xl font-bold text-foreground">$</span>
-              <input
-                type="number"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                className="w-32 border-b-2 border-primary bg-transparent text-center text-4xl font-bold text-foreground outline-none"
-                autoFocus
-              />
+              <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="w-32 border-b-2 border-primary bg-transparent text-center text-4xl font-bold text-foreground outline-none" autoFocus />
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setEditingCategory(null)}
-                className="flex-1 rounded-xl bg-secondary py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-              >
-                CANCEL
-              </button>
-              <button
-                onClick={handleSaveBudget}
-                className="flex-1 rounded-xl bg-income py-3 text-sm font-semibold text-white transition-colors hover:brightness-95"
-              >
-                SAVE
-              </button>
+              <button onClick={() => setEditingCategory(null)} className="flex-1 rounded-xl bg-secondary py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted">CANCEL</button>
+              <button onClick={handleSaveBudget} className="flex-1 rounded-xl bg-income py-3 text-sm font-semibold text-white transition-colors hover:brightness-95">SAVE</button>
             </div>
           </div>
         </div>
