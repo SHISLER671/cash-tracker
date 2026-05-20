@@ -10,9 +10,7 @@ export type SyncStatus = {
 
 export async function pushToPartner(transactions: Transaction[]) {
   if (!supabase) return
-
   const toPush = transactions.filter(t => !t.synced)
-
   for (const t of toPush) {
     const { error } = await supabase.from("shared_transactions").insert({
       date: t.date.toISOString(),
@@ -23,50 +21,50 @@ export async function pushToPartner(transactions: Transaction[]) {
       note: t.note || null,
       device_id: `web-${Date.now()}`,
     })
-    if (!error) {
-      await db.transactions.update(t.id!, { synced: true })
-    }
+    if (!error) await db.transactions.update(t.id!, { synced: true })
   }
 }
 
 export async function pullFromPartner() {
   if (!supabase) return
 
+  console.log("🔍 pullFromPartner started")
+
   const { data, error } = await supabase
     .from("shared_transactions")
     .select("*")
     .order("created_at", { ascending: false })
 
-  if (error || !data) return
+  if (error || !data) {
+    console.log("❌ Supabase pull failed", error)
+    return
+  }
 
   const existing = await db.transactions.toArray()
+  console.log(`📊 ${existing.length} local | ${data.length} remote transactions`)
 
   const possibleDuplicates: any[] = []
   const newTransactions: Transaction[] = []
 
   for (const remote of data) {
-    const remoteDate = new Date(remote.date)
-    const remoteDay = remoteDate.toDateString() // e.g. "Wed May 20 2026"
-
     let isDuplicate = false
 
     for (const local of existing) {
-      const localDay = local.date.toDateString()
+      const daysDiff = Math.abs(new Date(remote.date).getTime() - local.date.getTime()) / (1000 * 3600 * 24)
       const amountDiff = Math.abs(remote.amount - local.amount)
-      const categoryMatch = local.category.toLowerCase() === (remote.category || "").toLowerCase()
 
-      // Lenient duplicate rules (catches your test case)
+      // Very lenient rules — catches almost all real duplicates
       if (
-        localDay === remoteDay || // same calendar day
-        amountDiff <= 5 &&        // within $5
-        (categoryMatch || !remote.category) // category matches or remote has none
+        daysDiff <= 7 ||                    // within 1 week
+        amountDiff <= 15                    // within $15
       ) {
         isDuplicate = true
         possibleDuplicates.push({
           local,
           remote,
-          reason: `Similar: $${local.amount} vs $${remote.amount} on ${localDay}`,
+          reason: `Close match: $${local.amount} vs $${remote.amount} (${daysDiff.toFixed(1)} days apart)`
         })
+        console.log("⚠️ DUPLICATE FLAGGED:", possibleDuplicates[possibleDuplicates.length - 1])
         break
       }
     }
@@ -85,20 +83,16 @@ export async function pullFromPartner() {
     }
   }
 
-  // Add new transactions
   if (newTransactions.length > 0) {
     await db.transactions.bulkAdd(newTransactions)
+    console.log(`✅ Added ${newTransactions.length} new transactions`)
   }
 
-  // Show duplicates for review
   if (possibleDuplicates.length > 0) {
     localStorage.setItem("possibleDuplicates", JSON.stringify(possibleDuplicates))
     toast.warning(`${possibleDuplicates.length} possible duplicate(s) detected`, {
-      description: "Review before they appear on other devices",
-      action: {
-        label: "Review Now",
-        onClick: () => (window.location.href = "/history?review=duplicates"),
-      },
+      description: "Review before they sync everywhere",
+      action: { label: "Review Now", onClick: () => (window.location.href = "/history?review=duplicates") },
     })
   }
 
@@ -114,8 +108,5 @@ export function getSyncStatus(): SyncStatus {
 }
 
 export async function autoPullIfNeeded() {
-  const lastPulled = localStorage.getItem("lastPulled")
-  if (!lastPulled || (Date.now() - new Date(lastPulled).getTime()) / (1000 * 60) > 5) {
-    await pullFromPartner()
-  }
+  await pullFromPartner()
 }

@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react"
 import { db, type Transaction } from "@/lib/db"
 import EditTransactionModal from "@/components/EditTransactionModal"
 import { TransactionList } from "@/components/transaction-list"
+import { autoPullIfNeeded } from "@/lib/supabase/sync"
 
 function HistoryPageSkeleton() {
   return (
@@ -30,14 +31,14 @@ function HistoryPageContent() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [possibleDuplicates, setPossibleDuplicates] = useState<any[]>([])
 
-  // Load duplicates for review
+  // Auto-pull on mount + load duplicates
   useEffect(() => {
+    autoPullIfNeeded()
+
     const reviewMode = searchParams.get("review")
     if (reviewMode === "duplicates") {
       const stored = localStorage.getItem("possibleDuplicates")
-      if (stored) {
-        setPossibleDuplicates(JSON.parse(stored))
-      }
+      if (stored) setPossibleDuplicates(JSON.parse(stored))
     }
   }, [searchParams])
 
@@ -86,7 +87,7 @@ function HistoryPageContent() {
       {possibleDuplicates.length > 0 && (
         <div className="mx-4 mt-4 bg-amber-100 border border-amber-300 rounded-2xl p-4">
           <p className="font-semibold text-amber-800">Possible duplicates detected ({possibleDuplicates.length})</p>
-          <p className="text-sm text-amber-700 mt-1">Review before they sync to other devices</p>
+          <p className="text-sm text-amber-700 mt-1">Review before they sync everywhere</p>
           
           {possibleDuplicates.map((dup, i) => (
             <div key={i} className="mt-4 bg-white rounded-xl p-4 border border-amber-200">
@@ -95,32 +96,17 @@ function HistoryPageContent() {
                   <span className="font-medium">${dup.local?.amount || dup.remote?.amount}</span>
                   <span className="text-muted-foreground ml-2">{dup.local?.merchant || dup.remote?.merchant}</span>
                 </div>
-                <div className="text-xs text-amber-600">Same day • similar amount</div>
+                <div className="text-xs text-amber-600">{dup.reason}</div>
               </div>
 
               <div className="flex gap-3 mt-4">
-                <button
-                  onClick={() => handleDeleteDuplicate(dup)}
-                  className="flex-1 py-3 text-red-600 bg-red-50 rounded-xl font-medium text-sm"
-                >
-                  Delete One
-                </button>
-                <button
-                  onClick={() => handleMergeDuplicate(dup)}
-                  className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-medium text-sm"
-                >
-                  Merge
-                </button>
-                <button
-                  onClick={() => {
-                    const remaining = possibleDuplicates.filter((_, idx) => idx !== i)
-                    setPossibleDuplicates(remaining)
-                    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
-                  }}
-                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
-                >
-                  Keep Both
-                </button>
+                <button onClick={() => handleDeleteDuplicate(dup)} className="flex-1 py-3 text-red-600 bg-red-50 rounded-xl font-medium text-sm">Delete One</button>
+                <button onClick={() => handleMergeDuplicate(dup)} className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-medium text-sm">Merge</button>
+                <button onClick={() => {
+                  const remaining = possibleDuplicates.filter((_, idx) => idx !== i)
+                  setPossibleDuplicates(remaining)
+                  localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
+                }} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm">Keep Both</button>
               </div>
             </div>
           ))}
