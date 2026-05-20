@@ -3,7 +3,6 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-// Defensive client - won't crash the app in preview
 export const supabase = supabaseUrl && supabaseAnonKey 
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null
@@ -11,7 +10,7 @@ export const supabase = supabaseUrl && supabaseAnonKey
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey)
 
 if (isSupabaseConfigured) {
-  console.log('✅ Supabase client ready for sync')
+  console.log('✅ Supabase client ready')
 } else {
-  console.warn('⚠️ Supabase not configured (preview mode ok)')
+  console.warn('⚠️ Supabase not configured — sync disabled')
 }
