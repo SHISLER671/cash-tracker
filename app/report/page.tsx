@@ -11,10 +11,16 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 export default function ReportPage() {
   const router = useRouter()
   const [insights, setInsights] = useState<string>("")
-  const [loadingInsights, setLoadingInsights] = useState(true)
+  const [loadingInsights, setLoadingInsights] = useState(false)
 
   const currentMonth = format(new Date(), "yyyy-MM")
-  const lastMonth = format(subMonths(new Date(), 1), "yyyy-MM")
+  const lastMonthTotal = useLiveQuery(async () => {
+    const all = await db.transactions.toArray()
+    const monthStart = startOfMonth(subMonths(new Date(), 1))
+    const monthEnd = endOfMonth(subMonths(new Date(), 1))
+    const monthly = all.filter(t => t.date >= monthStart && t.date <= monthEnd && t.type === "out")
+    return monthly.reduce((sum, t) => sum + t.amount, 0)
+  }, [])
 
   const thisMonthData = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
@@ -40,21 +46,11 @@ export default function ReportPage() {
     return { total, byCategory, chartData }
   }, [])
 
-  const lastMonthTotal = useLiveQuery(async () => {
-    const all = await db.transactions.toArray()
-    const monthStart = startOfMonth(subMonths(new Date(), 1))
-    const monthEnd = endOfMonth(subMonths(new Date(), 1))
-
-    const monthly = all.filter(t => t.date >= monthStart && t.date <= monthEnd && t.type === "out")
-    return monthly.reduce((sum, t) => sum + t.amount, 0)
-  }, [])
-
-  // Improved AI insights with better error handling
+  // Generate AI insights only if we have data
   useEffect(() => {
     const generateInsights = async () => {
-      if (!thisMonthData?.total && lastMonthTotal === undefined) {
-        setInsights("No spending data yet this month.")
-        setLoadingInsights(false)
+      if (!thisMonthData || thisMonthData.total === 0) {
+        setInsights("Start tracking more receipts to get personalized saving tips!")
         return
       }
 
@@ -63,30 +59,26 @@ export default function ReportPage() {
       const prompt = `You are a kind, encouraging financial coach helping a couple save money.
 
 This month's spending:
-Total: $${thisMonthData?.total.toFixed(2) ?? "0.00"}
-Last month: $${lastMonthTotal?.toFixed(2) ?? "0.00"}
+Total: $${thisMonthData.total.toFixed(2)}
+Last month: $${(lastMonthTotal || 0).toFixed(2)}
 
 Breakdown:
-${Object.entries(thisMonthData?.byCategory || {}).map(([cat, amt]) => `- ${cat}: $${(amt as number).toFixed(2)}`).join("\n")}
+${Object.entries(thisMonthData.byCategory).map(([cat, amt]) => `- ${cat}: $${amt.toFixed(2)}`).join("\n")}
 
-Rules:
-- Be positive and supportive
-- Give 2-3 short, actionable ideas to save money
-- Point out easy wins or trends
-- Keep it friendly and concise`
+Give 2-3 short, actionable, friendly insights that help them save money this month. Focus on easy wins and trends. Be positive and specific.`
 
       try {
         const response = await fetch("https://api.venice.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.NEXT_PUBLIC_VENICE_API_KEY}`,
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_VENICE_API_KEY || ""}`,
           },
           body: JSON.stringify({
             model: "qwen3-6-27b",
             messages: [{ role: "user", content: prompt }],
             temperature: 0.7,
-            max_tokens: 350,
+            max_tokens: 400,
           }),
         })
 
@@ -94,10 +86,10 @@ Rules:
 
         const data = await response.json()
         const text = data.choices[0].message.content.trim()
-        setInsights(text || "You're doing great tracking your spending!")
+        setInsights(text)
       } catch (e) {
-        console.error("AI insights failed:", e)
-        setInsights("You're doing great by tracking your spending! Small changes add up over time.")
+        console.warn("AI insights skipped (no key or network issue)")
+        setInsights("You're doing great by tracking your spending! Small changes add up.")
       } finally {
         setLoadingInsights(false)
       }
@@ -151,7 +143,7 @@ Rules:
             Smart Insights
           </h3>
           {loadingInsights ? (
-            <p className="text-muted-foreground">Analyzing your spending to find ways to save...</p>
+            <p className="text-muted-foreground">Analyzing your spending to find saving opportunities...</p>
           ) : (
             <p className="text-foreground leading-relaxed whitespace-pre-wrap">{insights}</p>
           )}
