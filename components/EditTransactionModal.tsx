@@ -37,16 +37,18 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
       await db.transactions.add(updated)
     }
 
-    // Push to Supabase
+    // Push to Supabase (if configured)
     try {
-      await supabase.from('shared_transactions').insert({
-        date: updated.date.toISOString(),
-        amount: updated.amount,
-        category: updated.category,
-        type: updated.type,
-        note: updated.note || null,
-        device_id: `edit-${Date.now()}`,
-      })
+      if (supabase) {
+        await supabase.from('shared_transactions').insert({
+          date: updated.date.toISOString(),
+          amount: updated.amount,
+          category: updated.category,
+          type: updated.type,
+          note: updated.note || null,
+          device_id: `edit-${Date.now()}`,
+        })
+      }
     } catch (e) {
       console.warn('Supabase push delayed', e)
     }

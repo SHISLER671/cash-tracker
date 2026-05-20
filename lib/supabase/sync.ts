@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { supabase } from './client'
+import { supabase, isSupabaseConfigured } from './client'
 
 export interface SyncStatus {
   lastPushed: Date | null
@@ -30,10 +30,12 @@ function saveSyncStatus(status: Partial<SyncStatus>) {
 
 /** Auto-pull when app opens */
 export async function autoPullIfNeeded() {
+  if (!isSupabaseConfigured || !supabase) return
+  
   const lastPulled = getSyncStatus().lastPulled || new Date(0)
   const minutesSinceLastPull = (Date.now() - lastPulled.getTime()) / 1000 / 60
   
-  if (minutesSinceLastPull > 5) {  // only pull if >5 minutes old
+  if (minutesSinceLastPull > 5) {
     const result = await pullFromPartner()
     if (result.success && result.count > 0) {
       console.log(`✅ Auto-pulled ${result.count} new transactions`)
@@ -43,6 +45,10 @@ export async function autoPullIfNeeded() {
 
 /** Push new transactions */
 export async function pushToPartner(): Promise<{ success: boolean; count: number; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { success: false, count: 0, error: 'Supabase not configured' }
+  }
+
   try {
     const transactions = await db.transactions.toArray()
     const lastPushed = getSyncStatus().lastPushed
@@ -79,6 +85,10 @@ export async function pushToPartner(): Promise<{ success: boolean; count: number
 
 /** Pull from Supabase */
 export async function pullFromPartner(): Promise<{ success: boolean; count: number; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { success: false, count: 0, error: 'Supabase not configured' }
+  }
+
   try {
     const lastPulled = getSyncStatus().lastPulled || new Date(0)
     
@@ -123,8 +133,12 @@ export async function pullFromPartner(): Promise<{ success: boolean; count: numb
 }
 
 export async function getPendingPushCount(): Promise<number> {
-  const transactions = await db.transactions.toArray()
-  const lastPushed = getSyncStatus().lastPushed
-  if (!lastPushed) return transactions.length
-  return transactions.filter(t => new Date(t.date) > lastPushed).length
+  try {
+    const transactions = await db.transactions.toArray()
+    const lastPushed = getSyncStatus().lastPushed
+    if (!lastPushed) return transactions.length
+    return transactions.filter(t => new Date(t.date) > lastPushed).length
+  } catch {
+    return 0
+  }
 }
