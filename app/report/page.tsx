@@ -10,17 +10,10 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 export default function ReportPage() {
   const router = useRouter()
-  const [insights, setInsights] = useState<string>("")
-  const [loadingInsights, setLoadingInsights] = useState(false)
+  const [insights, setInsights] = useState<string>("Analyzing your spending to find ways to save money...")
+  const [loadingInsights, setLoadingInsights] = useState(true)
 
   const currentMonth = format(new Date(), "yyyy-MM")
-  const lastMonthTotal = useLiveQuery(async () => {
-    const all = await db.transactions.toArray()
-    const monthStart = startOfMonth(subMonths(new Date(), 1))
-    const monthEnd = endOfMonth(subMonths(new Date(), 1))
-    const monthly = all.filter(t => t.date >= monthStart && t.date <= monthEnd && t.type === "out")
-    return monthly.reduce((sum, t) => sum + t.amount, 0)
-  }, [])
 
   const thisMonthData = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
@@ -46,17 +39,26 @@ export default function ReportPage() {
     return { total, byCategory, chartData }
   }, [])
 
-  // Generate AI insights only if we have data
+  const lastMonthTotal = useLiveQuery(async () => {
+    const all = await db.transactions.toArray()
+    const monthStart = startOfMonth(subMonths(new Date(), 1))
+    const monthEnd = endOfMonth(subMonths(new Date(), 1))
+    const monthly = all.filter(t => t.date >= monthStart && t.date <= monthEnd && t.type === "out")
+    return monthly.reduce((sum, t) => sum + t.amount, 0)
+  }, [])
+
+  // AI Insights with better fallback
   useEffect(() => {
     const generateInsights = async () => {
       if (!thisMonthData || thisMonthData.total === 0) {
         setInsights("Start tracking more receipts to get personalized saving tips!")
+        setLoadingInsights(false)
         return
       }
 
       setLoadingInsights(true)
 
-      const prompt = `You are a kind, encouraging financial coach helping a couple save money.
+      const prompt = `You are a kind, encouraging financial coach.
 
 This month's spending:
 Total: $${thisMonthData.total.toFixed(2)}
@@ -65,7 +67,7 @@ Last month: $${(lastMonthTotal || 0).toFixed(2)}
 Breakdown:
 ${Object.entries(thisMonthData.byCategory).map(([cat, amt]) => `- ${cat}: $${amt.toFixed(2)}`).join("\n")}
 
-Give 2-3 short, actionable, friendly insights that help them save money this month. Focus on easy wins and trends. Be positive and specific.`
+Give 2-3 short, friendly, actionable ideas to help them save money this month. Focus on easy wins.`
 
       try {
         const response = await fetch("https://api.venice.ai/api/v1/chat/completions", {
@@ -85,11 +87,11 @@ Give 2-3 short, actionable, friendly insights that help them save money this mon
         if (!response.ok) throw new Error("API error")
 
         const data = await response.json()
-        const text = data.choices[0].message.content.trim()
-        setInsights(text)
+        const text = data.choices?.[0]?.message?.content?.trim()
+        setInsights(text || "You're doing great tracking your spending!")
       } catch (e) {
-        console.warn("AI insights skipped (no key or network issue)")
-        setInsights("You're doing great by tracking your spending! Small changes add up.")
+        console.warn("AI insights unavailable:", e)
+        setInsights("You're doing great by tracking your spending! Small consistent changes add up.")
       } finally {
         setLoadingInsights(false)
       }
@@ -140,7 +142,7 @@ Give 2-3 short, actionable, friendly insights that help them save money this mon
 
         <div className="bg-card rounded-3xl p-6 shadow-earth">
           <h3 className="font-semibold mb-3 flex items-center gap-2">
-            Smart Insights
+            💡 Smart Insights
           </h3>
           {loadingInsights ? (
             <p className="text-muted-foreground">Analyzing your spending to find saving opportunities...</p>
