@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft } from "lucide-react"
@@ -8,13 +8,29 @@ import { db, type Transaction } from "@/lib/db"
 import EditTransactionModal from "@/components/EditTransactionModal"
 import { TransactionList } from "@/components/transaction-list"
 
-export default function HistoryPage() {
+function HistoryPageSkeleton() {
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="flex items-center justify-between p-4 border-b">
+        <div className="h-11 w-11 rounded-full bg-card animate-pulse" />
+        <div className="h-7 w-24 rounded bg-card animate-pulse" />
+        <div className="w-11" />
+      </header>
+      <div className="p-4 space-y-4">
+        <div className="h-24 bg-card rounded-3xl animate-pulse" />
+        <div className="h-24 bg-card rounded-3xl animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+function HistoryPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [possibleDuplicates, setPossibleDuplicates] = useState<any[]>([])
 
-  // Load possible duplicates from localStorage when ?review=duplicates is present
+  // Load duplicates for review
   useEffect(() => {
     const reviewMode = searchParams.get("review")
     if (reviewMode === "duplicates") {
@@ -41,20 +57,15 @@ export default function HistoryPage() {
   }))
 
   const handleDeleteDuplicate = async (duplicate: any) => {
-    if (duplicate.local?.id) {
-      await db.transactions.delete(duplicate.local.id)
-    }
-    // Remove from review list
+    if (duplicate.local?.id) await db.transactions.delete(duplicate.local.id)
     const remaining = possibleDuplicates.filter(d => d !== duplicate)
     setPossibleDuplicates(remaining)
     localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
   }
 
   const handleMergeDuplicate = async (duplicate: any) => {
-    // Keep the one with more complete data (prefer the one with merchant)
     const keep = duplicate.remote.merchant ? duplicate.remote : duplicate.local
     const remove = duplicate.remote.merchant ? duplicate.local : duplicate.remote
-
     if (remove?.id) await db.transactions.delete(remove.id)
 
     const remaining = possibleDuplicates.filter(d => d !== duplicate)
@@ -72,7 +83,6 @@ export default function HistoryPage() {
         <div className="w-11" />
       </header>
 
-      {/* Duplicate Review Banner */}
       {possibleDuplicates.length > 0 && (
         <div className="mx-4 mt-4 bg-amber-100 border border-amber-300 rounded-2xl p-4">
           <p className="font-semibold text-amber-800">Possible duplicates detected ({possibleDuplicates.length})</p>
@@ -117,23 +127,25 @@ export default function HistoryPage() {
         </div>
       )}
 
-      {/* Normal transaction list */}
       <div className="p-4">
-        <TransactionList
-          transactions={transactions}
-          onEdit={setEditingTransaction}
-        />
+        <TransactionList transactions={transactions} onEdit={setEditingTransaction} />
       </div>
 
       {editingTransaction && (
         <EditTransactionModal
           transaction={editingTransaction}
           onClose={() => setEditingTransaction(null)}
-          onSave={() => {
-            // Refresh happens automatically via live query
-          }}
+          onSave={() => {}}
         />
       )}
     </div>
+  )
+}
+
+export default function HistoryPage() {
+  return (
+    <Suspense fallback={<HistoryPageSkeleton />}>
+      <HistoryPageContent />
+    </Suspense>
   )
 }
