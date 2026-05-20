@@ -17,7 +17,7 @@ export async function pushToPartner(transactions: Transaction[]) {
     const { error } = await supabase.from("shared_transactions").insert({
       date: t.date.toISOString(),
       amount: t.amount,
-      merchant: t.merchant,
+      merchant: t.merchant || null,
       category: t.category,
       type: t.type,
       note: t.note || null,
@@ -40,58 +40,68 @@ export async function pullFromPartner() {
   if (error || !data) return
 
   const existing = await db.transactions.toArray()
-  const existingMap = new Map(existing.map(t => [`${t.date.toISOString().split("T")[0]}-${t.amount}-${t.category}`, t]))
 
-  const newTransactions: Transaction[] = []
   const possibleDuplicates: any[] = []
+  const newTransactions: Transaction[] = []
 
   for (const remote of data) {
-    const key = `${new Date(remote.date).toISOString().split("T")[0]}-${remote.amount}-${remote.category}`
+    const remoteDate = new Date(remote.date)
+    const remoteDay = remoteDate.toDateString() // e.g. "Wed May 20 2026"
 
-    const localMatch = existingMap.get(key)
+    let isDuplicate = false
 
-    if (localMatch) {
-      // Rule-based duplicate check
-      const daysDiff = Math.abs(new Date(remote.date).getTime() - localMatch.date.getTime()) / (1000 * 3600 * 24)
-      const amountDiff = Math.abs(remote.amount - localMatch.amount)
+    for (const local of existing) {
+      const localDay = local.date.toDateString()
+      const amountDiff = Math.abs(remote.amount - local.amount)
+      const categoryMatch = local.category.toLowerCase() === (remote.category || "").toLowerCase()
 
-      if (daysDiff < 1 && amountDiff <= 3) {
+      // Lenient duplicate rules (catches your test case)
+      if (
+        localDay === remoteDay || // same calendar day
+        amountDiff <= 5 &&        // within $5
+        (categoryMatch || !remote.category) // category matches or remote has none
+      ) {
+        isDuplicate = true
         possibleDuplicates.push({
-          local: localMatch,
-          remote: remote,
-          reason: "Very similar (same day + amount)",
+          local,
+          remote,
+          reason: `Similar: $${local.amount} vs $${remote.amount} on ${localDay}`,
         })
-        continue // skip auto-add
+        break
       }
     }
 
-    newTransactions.push({
-      id: undefined,
-      date: new Date(remote.date),
-      amount: remote.amount,
-      merchant: remote.merchant || "",
-      category: remote.category,
-      type: remote.type,
-      note: remote.note || undefined,
-      synced: true,
-    })
+    if (!isDuplicate) {
+      newTransactions.push({
+        id: undefined,
+        date: new Date(remote.date),
+        amount: remote.amount,
+        merchant: remote.merchant || "",
+        category: remote.category || "other",
+        type: remote.type,
+        note: remote.note || undefined,
+        synced: true,
+      })
+    }
   }
 
-  // Insert new transactions
+  // Add new transactions
   if (newTransactions.length > 0) {
     await db.transactions.bulkAdd(newTransactions)
   }
 
-  // Store possible duplicates for review
+  // Show duplicates for review
   if (possibleDuplicates.length > 0) {
     localStorage.setItem("possibleDuplicates", JSON.stringify(possibleDuplicates))
     toast.warning(`${possibleDuplicates.length} possible duplicate(s) detected`, {
-      description: "Tap to review",
-      action: { label: "Review", onClick: () => window.location.href = "/history?review=duplicates" },
+      description: "Review before they appear on other devices",
+      action: {
+        label: "Review Now",
+        onClick: () => (window.location.href = "/history?review=duplicates"),
+      },
     })
   }
 
-  // Update last pulled time
   localStorage.setItem("lastPulled", new Date().toISOString())
 }
 
@@ -99,19 +109,13 @@ export function getSyncStatus(): SyncStatus {
   return {
     lastPushed: localStorage.getItem("lastPushed"),
     lastPulled: localStorage.getItem("lastPulled"),
-    pendingCount: 0, // we can calculate this later if needed
+    pendingCount: 0,
   }
 }
 
 export async function autoPullIfNeeded() {
   const lastPulled = localStorage.getItem("lastPulled")
-  if (!lastPulled) {
-    await pullFromPartner()
-    return
-  }
-
-  const minutesSinceLastPull = (Date.now() - new Date(lastPulled).getTime()) / (1000 * 60)
-  if (minutesSinceLastPull > 5) {
+  if (!lastPulled || (Date.now() - new Date(lastPulled).getTime()) / (1000 * 60) > 5) {
     await pullFromPartner()
   }
 }
