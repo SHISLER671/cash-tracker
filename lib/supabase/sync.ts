@@ -28,7 +28,7 @@ export async function pushToPartner(transactions: Transaction[]) {
 export async function pullFromPartner() {
   if (!supabase) return
 
-  console.log("[v0] pullFromPartner started - checking for duplicates")
+  console.log("🔍 pullFromPartner started")
 
   const { data, error } = await supabase
     .from("shared_transactions")
@@ -36,28 +36,27 @@ export async function pullFromPartner() {
     .order("created_at", { ascending: false })
 
   if (error || !data) {
-    console.log("[v0] Supabase pull failed", error)
+    console.log("❌ Supabase pull failed", error)
     return
   }
 
   const existing = await db.transactions.toArray()
-  console.log(`[v0] Found ${existing.length} local transactions and ${data.length} remote transactions`)
+  console.log(`📊 ${existing.length} local | ${data.length} remote transactions`)
 
   const possibleDuplicates: any[] = []
   const newTransactions: Transaction[] = []
 
   for (const remote of data) {
-    const remoteDate = new Date(remote.date)
     let isDuplicate = false
 
     for (const local of existing) {
-      const daysDiff = Math.abs(remoteDate.getTime() - local.date.getTime()) / (1000 * 3600 * 24)
+      const daysDiff = Math.abs(new Date(remote.date).getTime() - local.date.getTime()) / (1000 * 3600 * 24)
       const amountDiff = Math.abs(remote.amount - local.amount)
 
-      // Very lenient rules (catches your real test case)
+      // Very lenient rules — catches almost all real duplicates
       if (
-        daysDiff <= 2 ||                    // within 2 days
-        (amountDiff <= 10 && daysDiff <= 7) // within $10 and within a week
+        daysDiff <= 7 ||                    // within 1 week
+        amountDiff <= 15                    // within $15
       ) {
         isDuplicate = true
         possibleDuplicates.push({
@@ -65,7 +64,7 @@ export async function pullFromPartner() {
           remote,
           reason: `Close match: $${local.amount} vs $${remote.amount} (${daysDiff.toFixed(1)} days apart)`
         })
-        console.log("[v0] Possible duplicate found:", possibleDuplicates[possibleDuplicates.length-1])
+        console.log("⚠️ DUPLICATE FLAGGED:", possibleDuplicates[possibleDuplicates.length - 1])
         break
       }
     }
@@ -86,7 +85,7 @@ export async function pullFromPartner() {
 
   if (newTransactions.length > 0) {
     await db.transactions.bulkAdd(newTransactions)
-    console.log(`[v0] Added ${newTransactions.length} new transactions`)
+    console.log(`✅ Added ${newTransactions.length} new transactions`)
   }
 
   if (possibleDuplicates.length > 0) {
@@ -95,7 +94,6 @@ export async function pullFromPartner() {
       description: "Review before they sync everywhere",
       action: { label: "Review Now", onClick: () => (window.location.href = "/history?review=duplicates") },
     })
-    console.log("[v0] Duplicate banner should appear now")
   }
 
   localStorage.setItem("lastPulled", new Date().toISOString())
