@@ -1,87 +1,151 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft } from "lucide-react"
-import { db, type Transaction as DbTransaction } from "@/lib/db"
-import { TransactionList } from "@/components/transaction-list"
+import { db, type Transaction } from "@/lib/db"
 import EditTransactionModal from "@/components/EditTransactionModal"
+import { TransactionList } from "@/components/transaction-list"
 
-export default function HistoryPage() {
+function HistoryPageSkeleton() {
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="flex items-center justify-between p-4 border-b">
+        <div className="h-11 w-11 rounded-full bg-card animate-pulse" />
+        <div className="h-7 w-24 rounded bg-card animate-pulse" />
+        <div className="w-11" />
+      </header>
+      <div className="p-4 space-y-4">
+        <div className="h-24 bg-card rounded-3xl animate-pulse" />
+        <div className="h-24 bg-card rounded-3xl animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+function HistoryPageContent() {
   const router = useRouter()
-  const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null)
+  const searchParams = useSearchParams()
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+  const [possibleDuplicates, setPossibleDuplicates] = useState<any[]>([])
 
-  const dbTransactions = useLiveQuery(() =>
-    db.transactions.orderBy("date").reverse().toArray()
-  , [])
+  // Load duplicates for review
+  useEffect(() => {
+    const reviewMode = searchParams.get("review")
+    if (reviewMode === "duplicates") {
+      const stored = localStorage.getItem("possibleDuplicates")
+      if (stored) {
+        setPossibleDuplicates(JSON.parse(stored))
+      }
+    }
+  }, [searchParams])
 
-  const transactions = (dbTransactions ?? []).map((t: DbTransaction) => ({
-    id: String(t.id),
-    type: t.type,
-    amount: t.amount,
-    category: t.category,
+  const dbTransactions = useLiveQuery(async () => {
+    const all = await db.transactions.toArray()
+    return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [])
+
+  const transactions: Transaction[] = (dbTransactions ?? []).map((t: any) => ({
+    id: t.id,
     date: new Date(t.date),
+    amount: t.amount,
+    merchant: t.merchant || "",
+    category: t.category,
+    type: t.type,
     note: t.note,
-    merchant: t.merchant,
   }))
 
-  const income = transactions
-    .filter((t) => t.type === "in")
-    .reduce((sum, t) => sum + t.amount, 0)
-
-  const expenses = transactions
-    .filter((t) => t.type === "out")
-    .reduce((sum, t) => sum + t.amount, 0)
-
-  const handleEdit = (tx: any) => {
-    const fullTx = dbTransactions?.find(t => String(t.id) === tx.id)
-    if (fullTx) setEditingTransaction(fullTx)
+  const handleDeleteDuplicate = async (duplicate: any) => {
+    if (duplicate.local?.id) await db.transactions.delete(duplicate.local.id)
+    const remaining = possibleDuplicates.filter(d => d !== duplicate)
+    setPossibleDuplicates(remaining)
+    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
   }
 
-  const handleModalSave = () => {
-    setEditingTransaction(null)
-    // LiveQuery will automatically refresh the list
+  const handleMergeDuplicate = async (duplicate: any) => {
+    const keep = duplicate.remote.merchant ? duplicate.remote : duplicate.local
+    const remove = duplicate.remote.merchant ? duplicate.local : duplicate.remote
+    if (remove?.id) await db.transactions.delete(remove.id)
+
+    const remaining = possibleDuplicates.filter(d => d !== duplicate)
+    setPossibleDuplicates(remaining)
+    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between p-4 border-b border-border">
-        <button
-          onClick={() => router.back()}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
-        >
+    <div className="min-h-screen bg-background">
+      <header className="flex items-center justify-between p-4 border-b">
+        <button onClick={() => router.back()} className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth">
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-lg font-bold text-foreground">History</h1>
+        <h1 className="text-xl font-bold">History</h1>
         <div className="w-11" />
       </header>
 
-      {/* Summary */}
-      <div className="flex items-center justify-center gap-8 p-4 border-b border-border">
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Income</p>
-          <p className="text-lg font-bold text-income">+${income.toFixed(2)}</p>
+      {possibleDuplicates.length > 0 && (
+        <div className="mx-4 mt-4 bg-amber-100 border border-amber-300 rounded-2xl p-4">
+          <p className="font-semibold text-amber-800">Possible duplicates detected ({possibleDuplicates.length})</p>
+          <p className="text-sm text-amber-700 mt-1">Review before they sync to other devices</p>
+          
+          {possibleDuplicates.map((dup, i) => (
+            <div key={i} className="mt-4 bg-white rounded-xl p-4 border border-amber-200">
+              <div className="flex justify-between text-sm">
+                <div>
+                  <span className="font-medium">${dup.local?.amount || dup.remote?.amount}</span>
+                  <span className="text-muted-foreground ml-2">{dup.local?.merchant || dup.remote?.merchant}</span>
+                </div>
+                <div className="text-xs text-amber-600">Same day • similar amount</div>
+              </div>
+
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => handleDeleteDuplicate(dup)}
+                  className="flex-1 py-3 text-red-600 bg-red-50 rounded-xl font-medium text-sm"
+                >
+                  Delete One
+                </button>
+                <button
+                  onClick={() => handleMergeDuplicate(dup)}
+                  className="flex-1 py-3 bg-amber-600 text-white rounded-xl font-medium text-sm"
+                >
+                  Merge
+                </button>
+                <button
+                  onClick={() => {
+                    const remaining = possibleDuplicates.filter((_, idx) => idx !== i)
+                    setPossibleDuplicates(remaining)
+                    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
+                  }}
+                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium text-sm"
+                >
+                  Keep Both
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="w-px h-8 bg-border" />
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Expenses</p>
-          <p className="text-lg font-bold text-expense">-${expenses.toFixed(2)}</p>
-        </div>
+      )}
+
+      <div className="p-4">
+        <TransactionList transactions={transactions} onEdit={setEditingTransaction} />
       </div>
 
-      <TransactionList 
-        transactions={transactions} 
-        onEdit={handleEdit} 
-        onRefresh={() => {}} 
-      />
-
-      <EditTransactionModal
-        transaction={editingTransaction}
-        onClose={() => setEditingTransaction(null)}
-        onSave={handleModalSave}
-      />
+      {editingTransaction && (
+        <EditTransactionModal
+          transaction={editingTransaction}
+          onClose={() => setEditingTransaction(null)}
+          onSave={() => {}}
+        />
+      )}
     </div>
+  )
+}
+
+export default function HistoryPage() {
+  return (
+    <Suspense fallback={<HistoryPageSkeleton />}>
+      <HistoryPageContent />
+    </Suspense>
   )
 }
