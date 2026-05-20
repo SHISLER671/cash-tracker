@@ -13,7 +13,9 @@ export default function ReportPage() {
   const [insights, setInsights] = useState<string>("")
   const [loadingInsights, setLoadingInsights] = useState(true)
 
-  // This month's spending
+  const currentMonth = format(new Date(), "yyyy-MM")
+  const lastMonth = format(subMonths(new Date(), 1), "yyyy-MM")
+
   const thisMonthData = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
     const monthStart = startOfMonth(new Date())
@@ -38,7 +40,6 @@ export default function ReportPage() {
     return { total, byCategory, chartData }
   }, [])
 
-  // Last month's total for comparison
   const lastMonthTotal = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
     const monthStart = startOfMonth(subMonths(new Date(), 1))
@@ -48,22 +49,30 @@ export default function ReportPage() {
     return monthly.reduce((sum, t) => sum + t.amount, 0)
   }, [])
 
-  // Generate AI insights
+  // Improved AI prompt with clear rules
   useEffect(() => {
     const generateInsights = async () => {
       if (!thisMonthData || lastMonthTotal === undefined) return
 
       setLoadingInsights(true)
 
-      const prompt = `You are a helpful financial advisor. Here is this month's spending:
+      const prompt = `You are a kind, encouraging financial coach helping a couple save money.
 
-Total this month: $${thisMonthData.total.toFixed(2)}
+This month's spending:
+Total: $${thisMonthData.total.toFixed(2)}
 Last month: $${lastMonthTotal.toFixed(2)}
 
 Breakdown:
 ${Object.entries(thisMonthData.byCategory).map(([cat, amt]) => `- ${cat}: $${(amt as number).toFixed(2)}`).join("\n")}
 
-Give me 2-3 short, actionable insights that help the user **save money**. Be specific, encouraging, and friendly. Focus on trends and easy wins.`
+Rules for your response:
+- Be positive and supportive, never judgmental
+- Give 2-3 short, actionable insights
+- Focus on easy ways they can save money this month
+- Point out trends (e.g. "You're spending more on food than last month")
+- Suggest one or two realistic changes they could make
+
+Keep it warm, friendly, and concise.`
 
       try {
         const response = await fetch("https://api.venice.ai/api/v1/chat/completions", {
@@ -76,15 +85,14 @@ Give me 2-3 short, actionable insights that help the user **save money**. Be spe
             model: "qwen3-6-27b",
             messages: [{ role: "user", content: prompt }],
             temperature: 0.7,
-            max_tokens: 300,
+            max_tokens: 350,
           }),
         })
 
         const data = await response.json()
-        const text = data.choices[0].message.content.trim()
-        setInsights(text)
+        setInsights(data.choices[0].message.content.trim())
       } catch (e) {
-        setInsights("You're doing great tracking your spending! Keep it up.")
+        setInsights("You're doing great by tracking your spending! Keep going — small changes add up.")
       } finally {
         setLoadingInsights(false)
       }
@@ -106,7 +114,6 @@ Give me 2-3 short, actionable insights that help the user **save money**. Be spe
       </header>
 
       <main className="mx-auto w-full max-w-md flex-1 px-4 py-6">
-        {/* Total + Comparison */}
         <div className="mb-8 text-center">
           <p className="text-sm text-muted-foreground">This Month</p>
           <p className="text-5xl font-bold text-expense">
@@ -120,7 +127,6 @@ Give me 2-3 short, actionable insights that help the user **save money**. Be spe
           )}
         </div>
 
-        {/* Chart */}
         {thisMonthData && thisMonthData.chartData.length > 0 && (
           <div className="bg-card rounded-3xl p-6 shadow-earth mb-8">
             <ResponsiveContainer width="100%" height={280}>
@@ -135,13 +141,12 @@ Give me 2-3 short, actionable insights that help the user **save money**. Be spe
           </div>
         )}
 
-        {/* AI Insights */}
         <div className="bg-card rounded-3xl p-6 shadow-earth">
           <h3 className="font-semibold mb-3 flex items-center gap-2">
-            AI Insights
+            Smart Insights
           </h3>
           {loadingInsights ? (
-            <p className="text-muted-foreground">Analyzing your spending...</p>
+            <p className="text-muted-foreground">Analyzing your spending to find ways to save...</p>
           ) : (
             <p className="text-foreground leading-relaxed whitespace-pre-wrap">{insights}</p>
           )}
