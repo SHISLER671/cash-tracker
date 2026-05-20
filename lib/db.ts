@@ -21,15 +21,23 @@ export interface Receipt {
   processed: number
 }
 
+export interface Budget {
+  id?: number
+  month: string
+  category: string
+  limit: number
+}
+
 export const db = new Dexie('CashTracker') as Dexie & {
   transactions: EntityTable<Transaction, 'id'>
   receipts: EntityTable<Receipt, 'id'>
+  budgets: EntityTable<Budget, 'id'>
 }
 
-// Force a clean upgrade
-db.version(35).stores({
+db.version(36).stores({
   transactions: '++id, date, amount, category, type, synced',
-  receipts: '++id, createdAt, processed'
+  receipts: '++id, createdAt, processed',
+  budgets: '++id, month, category'
 })
 
 // Receipt helpers
@@ -42,7 +50,9 @@ export const markReceiptProcessed = async (id: number, category: string) => {
 }
 
 export const bulkMarkReceiptsProcessed = async (ids: number[], category: string) => {
-  return await db.receipts.bulkUpdate(ids.map(id => ({ key: id, changes: { processed: 1, category } })))
+  return await db.receipts.bulkUpdate(
+    ids.map(id => ({ key: id, changes: { processed: 1, category } }))
+  )
 }
 
 export const deleteReceipt = async (id: number) => await db.receipts.delete(id)
@@ -60,4 +70,4 @@ export const clearDraft = async () => {
   localStorage.removeItem('transaction_draft')
 }
 
-export type { Transaction, Receipt }
+export type { Transaction, Receipt, Budget }
