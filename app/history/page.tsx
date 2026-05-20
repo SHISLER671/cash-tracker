@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
-import { ArrowLeft, Trash2, Check, X } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { db, type Transaction } from "@/lib/db"
-import { EditTransactionModal } from "@/components/EditTransactionModal"
+import EditTransactionModal from "@/components/EditTransactionModal"
 import { TransactionList } from "@/components/transaction-list"
 
 export default function HistoryPage() {

@@ -7,7 +7,7 @@ import { ArrowLeft, Plus, Lock, Trash2, Upload, Download, Users } from "lucide-r
 import Link from "next/link"
 import { db } from "@/lib/db"
 import { format, formatDistanceToNow } from "date-fns"
-import { getSyncStatus, pushToPartner, pullFromPartner, getPendingPushCount, type SyncStatus } from "@/lib/supabase/sync"
+import { getSyncStatus, pushToPartner, pullFromPartner, type SyncStatus } from "@/lib/supabase/sync"
 
 const categoryIcons: Record<string, string> = {
   gas: "GAS",
@@ -44,9 +44,6 @@ export default function SettingsPage() {
   // Load sync status on mount
   useEffect(() => {
     setSyncStatus(getSyncStatus())
-    getPendingPushCount().then(count => {
-      setSyncStatus(prev => ({ ...prev, pendingCount: count }))
-    })
   }, [])
 
   // Get budgets from database
