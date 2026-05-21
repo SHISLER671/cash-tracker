@@ -25,7 +25,15 @@ function HistoryPageContent() {
 
     const stored = localStorage.getItem("possibleDuplicates")
     if (stored) {
-      setPossibleDuplicates(JSON.parse(stored))
+      try {
+        const parsed = JSON.parse(stored)
+        const fixed = parsed.map((d: any) => ({
+          ...d,
+          local: d.local ? { ...d.local, date: new Date(d.local.date) } : null,
+          remote: d.remote ? { ...d.remote, date: new Date(d.remote.date) } : null,
+        }))
+        setPossibleDuplicates(fixed)
+      } catch (e) {}
     }
   }, [])
 
@@ -61,19 +69,16 @@ function HistoryPageContent() {
     localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
   }
 
-  const handleSaveAndClose = () => {
+  const handleKeepBoth = () => {
+    const remaining = possibleDuplicates.filter(d => d !== selectedGroup)
+    setPossibleDuplicates(remaining)
+    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
     closeModal()
-    window.location.reload() // forces full refresh + sync
   }
 
-  // Safe date formatting helper
-  const formatDate = (date: any) => {
-    try {
-      const d = date instanceof Date ? date : new Date(date)
-      return d.toLocaleDateString()
-    } catch {
-      return "Unknown date"
-    }
+  const handleSaveAndClose = () => {
+    closeModal()
+    window.location.reload() // refresh + sync
   }
 
   return (
@@ -95,22 +100,22 @@ function HistoryPageContent() {
         />
       </div>
 
-      {/* Duplicate Review Modal */}
+      {/* Improved Duplicate Review Modal */}
       {showReviewModal && selectedGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md bg-white rounded-3xl shadow-earth-lg max-h-[90vh] overflow-auto">
             <div className="p-6 border-b">
               <h2 className="text-xl font-bold">Possible Duplicate</h2>
-              <p className="text-sm text-muted-foreground mt-1">{selectedGroup.reason || "These entries look similar"}</p>
+              <p className="text-sm text-muted-foreground mt-1">{selectedGroup.reason}</p>
             </div>
 
             <div className="p-6 space-y-8">
-              {/* Local entry */}
+              {/* Local Entry */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground mb-2">LOCAL ENTRY</p>
                 <div className="bg-card p-4 rounded-2xl">
-                  <p className="font-medium">${selectedGroup.local?.amount?.toFixed(2) || "?"} • {selectedGroup.local?.merchant || "Unknown"}</p>
-                  <p className="text-sm text-muted-foreground">{selectedGroup.local?.category || "other"} • {formatDate(selectedGroup.local?.date)}</p>
+                  <p className="font-medium">${selectedGroup.local?.amount} • {selectedGroup.local?.merchant || "Unknown"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedGroup.local?.category} • {selectedGroup.local?.date?.toLocaleDateString() || "—"}</p>
                 </div>
                 <button
                   onClick={() => handleDeleteFromGroup(selectedGroup)}
@@ -120,16 +125,15 @@ function HistoryPageContent() {
                 </button>
               </div>
 
-              {/* Remote entry */}
+              {/* Partner Entry */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground mb-2">FROM PARTNER</p>
                 <div className="bg-card p-4 rounded-2xl">
-                  <p className="font-medium">${selectedGroup.remote?.amount?.toFixed(2) || "?"} • {selectedGroup.remote?.merchant || "Unknown"}</p>
-                  <p className="text-sm text-muted-foreground">{selectedGroup.remote?.category || "other"} • {formatDate(selectedGroup.remote?.date)}</p>
+                  <p className="font-medium">${selectedGroup.remote?.amount} • {selectedGroup.remote?.merchant || "Unknown"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedGroup.remote?.category} • {selectedGroup.remote?.date ? new Date(selectedGroup.remote.date).toLocaleDateString() : "—"}</p>
                 </div>
                 <button
                   onClick={() => {
-                    // Keep local, delete remote from our copy
                     const remaining = possibleDuplicates.filter(d => d !== selectedGroup)
                     setPossibleDuplicates(remaining)
                     localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
@@ -142,9 +146,19 @@ function HistoryPageContent() {
               </div>
             </div>
 
-            <div className="p-4 border-t flex gap-3">
-              <button onClick={closeModal} className="flex-1 py-4 text-muted-foreground font-medium">Back</button>
-              <button onClick={handleSaveAndClose} className="flex-1 py-4 bg-black text-white font-semibold rounded-2xl">Save & Close</button>
+            {/* Global actions */}
+            <div className="p-4 border-t flex flex-col gap-3">
+              <button
+                onClick={handleKeepBoth}
+                className="w-full py-4 bg-gray-100 text-gray-700 font-medium rounded-2xl"
+              >
+                Keep Both Entries (remove flag)
+              </button>
+
+              <div className="flex gap-3">
+                <button onClick={closeModal} className="flex-1 py-4 text-muted-foreground font-medium">Back</button>
+                <button onClick={handleSaveAndClose} className="flex-1 py-4 bg-black text-white font-semibold rounded-2xl">Save & Close</button>
+              </div>
             </div>
           </div>
         </div>
