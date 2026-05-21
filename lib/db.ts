@@ -31,7 +31,7 @@ export interface Budget {
 
 export interface Preset {
   id?: number
-  name: string
+  name: string   // e.g. "pet food", "coffee", "rent", "groceries"
 }
 
 export const db = new Dexie("CashTracker") as Dexie & {
@@ -41,7 +41,7 @@ export const db = new Dexie("CashTracker") as Dexie & {
   presets: EntityTable<Preset, "id">
 }
 
-db.version(42).stores({
+db.version(45).stores({
   transactions: "++id, date, amount, category, type, synced, merchant",
   receipts: "++id, createdAt, processed",
   budgets: "++id, month, category",
@@ -65,6 +65,20 @@ export const bulkMarkReceiptsProcessed = async (ids: number[], category: string)
 
 export const deleteReceipt = async (id: number) => await db.receipts.delete(id)
 export const bulkDeleteReceipts = async (ids: number[]) => await db.receipts.bulkDelete(ids)
+
+// Preset helpers
+export const addPresetIfNew = async (name: string) => {
+  if (!name?.trim()) return
+  const trimmed = name.trim()
+  const existing = await db.presets.where('name').equalsIgnoreCase(trimmed).first()
+  if (!existing) {
+    await db.presets.add({ name: trimmed })
+  }
+}
+
+export const getAllPresets = async () => {
+  return await db.presets.orderBy('name').toArray()
+}
 
 // Draft helpers
 export const saveDraft = async (draft: Partial<Transaction>) => {
