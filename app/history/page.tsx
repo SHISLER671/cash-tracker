@@ -146,11 +146,11 @@ function HistoryPageContent() {
               </div>
             </div>
 
-            {/* Global actions */}
+            {/* Global actions - Keep Both is now very visible */}
             <div className="p-4 border-t flex flex-col gap-3">
               <button
                 onClick={handleKeepBoth}
-                className="w-full py-4 bg-gray-100 text-gray-700 font-medium rounded-2xl"
+                className="w-full py-4 bg-emerald-100 text-emerald-700 font-semibold rounded-2xl active:scale-95"
               >
                 Keep Both Entries (remove flag)
               </button>
