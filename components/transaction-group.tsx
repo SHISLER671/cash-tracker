@@ -7,9 +7,11 @@ interface TransactionGroupProps {
   label: string
   transactions: Transaction[]
   onEdit?: (transaction: Transaction) => void
+  possibleDuplicates?: any[]
+  onFlagClick?: (dup: any) => void
 }
 
-export function TransactionGroup({ label, transactions, onEdit }: TransactionGroupProps) {
+export function TransactionGroup({ label, transactions, onEdit, possibleDuplicates, onFlagClick }: TransactionGroupProps) {
   if (transactions.length === 0) return null
   
   return (
@@ -18,13 +20,18 @@ export function TransactionGroup({ label, transactions, onEdit }: TransactionGro
         {label}
       </h3>
       <div className="space-y-2">
-        {transactions.map((transaction) => (
-          <TransactionItem 
-            key={transaction.id} 
-            transaction={transaction} 
-            onEdit={onEdit}
-          />
-        ))}
+        {transactions.map((transaction) => {
+          const dup = possibleDuplicates?.find(d => d.local?.id === transaction.id)
+          return (
+            <TransactionItem 
+              key={transaction.id} 
+              transaction={transaction} 
+              onEdit={onEdit}
+              isDuplicate={!!dup}
+              onFlagClick={dup && onFlagClick ? () => onFlagClick(dup) : undefined}
+            />
+          )
+        })}
       </div>
     </div>
   )

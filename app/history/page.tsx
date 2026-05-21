@@ -10,7 +10,7 @@ import { TransactionList } from "@/components/transaction-list"
 import { autoPullIfNeeded } from "@/lib/supabase/sync"
 
 function HistoryPageSkeleton() {
-  return <div className="min-h-screen bg-background flex items-center justify-center">Loading history...</div>
+  return <div className="min-h-screen bg-background flex items-center justify-center">Loading...</div>
 }
 
 function HistoryPageContent() {
@@ -18,8 +18,9 @@ function HistoryPageContent() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [possibleDuplicates, setPossibleDuplicates] = useState<any[]>([])
   const [showReviewModal, setShowReviewModal] = useState(false)
+  const [selectedGroup, setSelectedGroup] = useState<any>(null)
 
-  // Load duplicates on every History visit
+  // Load duplicates and auto-pull on every visit
   useEffect(() => {
     autoPullIfNeeded()
 
@@ -44,25 +45,23 @@ function HistoryPageContent() {
     note: t.note,
   }))
 
-  const handleReviewDuplicates = () => {
+  const openDuplicateModal = (group: any) => {
+    setSelectedGroup(group)
     setShowReviewModal(true)
   }
 
-  const handleDeleteDuplicate = async (dup: any) => {
+  const handleDeleteFromGroup = async (dup: any) => {
     if (dup.local?.id) await db.transactions.delete(dup.local.id)
     const remaining = possibleDuplicates.filter(d => d !== dup)
     setPossibleDuplicates(remaining)
     localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
   }
 
-  const handleMergeDuplicate = async (dup: any) => {
-    const keep = dup.remote.merchant ? dup.remote : dup.local
-    const remove = dup.remote.merchant ? dup.local : dup.remote
-    if (remove?.id) await db.transactions.delete(remove.id)
-
-    const remaining = possibleDuplicates.filter(d => d !== dup)
+  const handleKeepBothFromGroup = () => {
+    const remaining = possibleDuplicates.filter(d => d !== selectedGroup)
     setPossibleDuplicates(remaining)
     localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
+    setShowReviewModal(false)
   }
 
   return (
@@ -75,71 +74,58 @@ function HistoryPageContent() {
         <div className="w-11" />
       </header>
 
-      {/* Clean Duplicate Banner */}
-      {possibleDuplicates.length > 0 && (
-        <div className="mx-4 mt-4 bg-amber-100 border border-amber-300 rounded-2xl p-4 flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-amber-800">Possible duplicates detected ({possibleDuplicates.length})</p>
-            <p className="text-sm text-amber-700">Some entries may be the same receipt added twice</p>
-          </div>
-          <button
-            onClick={handleReviewDuplicates}
-            className="px-5 py-2 bg-amber-600 text-white rounded-xl font-medium active:scale-95 transition-all"
-          >
-            Review
-          </button>
-        </div>
-      )}
-
       <div className="p-4">
-        <TransactionList transactions={transactions} onEdit={setEditingTransaction} />
+        <TransactionList 
+          transactions={transactions} 
+          onEdit={setEditingTransaction}
+          possibleDuplicates={possibleDuplicates}
+          onFlagClick={openDuplicateModal}
+        />
       </div>
 
       {/* Duplicate Review Modal */}
-      {showReviewModal && (
+      {showReviewModal && selectedGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md bg-white rounded-3xl shadow-earth-lg max-h-[90vh] overflow-auto">
             <div className="p-6 border-b">
-              <h2 className="text-xl font-bold">Review Possible Duplicates</h2>
-              <p className="text-sm text-muted-foreground mt-1">Choose what to keep</p>
+              <h2 className="text-xl font-bold">Possible Duplicate</h2>
+              <p className="text-sm text-muted-foreground mt-1">{selectedGroup.reason}</p>
             </div>
 
             <div className="p-6 space-y-6">
-              {possibleDuplicates.map((dup, i) => (
-                <div key={i} className="border border-amber-200 rounded-2xl p-4">
-                  <div className="flex justify-between text-sm mb-3">
-                    <div className="font-medium">
-                      ${dup.local?.amount || dup.remote?.amount} • {dup.local?.merchant || dup.remote?.merchant}
-                    </div>
-                    <div className="text-amber-600 text-xs">{dup.reason}</div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleDeleteDuplicate(dup)}
-                      className="flex-1 py-3 text-red-600 bg-red-50 rounded-xl text-sm font-medium"
-                    >
-                      Delete One
-                    </button>
-                    <button
-                      onClick={() => handleMergeDuplicate(dup)}
-                      className="flex-1 py-3 bg-amber-600 text-white rounded-xl text-sm font-medium"
-                    >
-                      Merge (keep best)
-                    </button>
-                    <button
-                      onClick={() => {
-                        const remaining = possibleDuplicates.filter((_, idx) => idx !== i)
-                        setPossibleDuplicates(remaining)
-                        localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
-                      }}
-                      className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium"
-                    >
-                      Keep Both
-                    </button>
-                  </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-3">ENTRY 1 (LOCAL)</p>
+                <div className="bg-card p-4 rounded-2xl">
+                  <p className="font-medium">${selectedGroup.local.amount} • {selectedGroup.local.merchant}</p>
+                  <p className="text-sm text-muted-foreground">{selectedGroup.local.category} • {selectedGroup.local.date.toLocaleDateString()}</p>
                 </div>
-              ))}
+                <button
+                  onClick={() => handleDeleteFromGroup(selectedGroup)}
+                  className="mt-3 w-full py-3 text-red-600 bg-red-50 rounded-2xl font-medium"
+                >
+                  Delete this version
+                </button>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-3">ENTRY 2 (FROM PARTNER)</p>
+                <div className="bg-card p-4 rounded-2xl">
+                  <p className="font-medium">${selectedGroup.remote.amount} • {selectedGroup.remote.merchant}</p>
+                  <p className="text-sm text-muted-foreground">{selectedGroup.remote.category} • {new Date(selectedGroup.remote.date).toLocaleDateString()}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    // Delete the remote one from local copy (we keep the local)
+                    const remaining = possibleDuplicates.filter(d => d !== selectedGroup)
+                    setPossibleDuplicates(remaining)
+                    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
+                    setShowReviewModal(false)
+                  }}
+                  className="mt-3 w-full py-3 bg-amber-600 text-white rounded-2xl font-medium"
+                >
+                  Delete this version (keep local)
+                </button>
+              </div>
             </div>
 
             <div className="p-4 border-t flex gap-3">
@@ -152,8 +138,7 @@ function HistoryPageContent() {
               <button
                 onClick={() => {
                   setShowReviewModal(false)
-                  // Force refresh
-                  window.location.reload()
+                  window.location.reload() // force refresh + sync
                 }}
                 className="flex-1 py-4 bg-black text-white font-semibold rounded-2xl"
               >
