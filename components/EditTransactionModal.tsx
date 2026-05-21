@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { db, type Transaction } from "@/lib/db"
+import { db, type Transaction, addPresetIfNew, getAllPresets } from "@/lib/db"
 import { supabase } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
@@ -22,12 +22,19 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
     note: "",
     synced: false,
   })
+  const [presets, setPresets] = useState<string[]>([])
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
 
   useEffect(() => {
     if (transaction) {
       setForm({ ...transaction })
     }
   }, [transaction])
+
+  useEffect(() => {
+    getAllPresets().then(p => setPresets(p.map(preset => preset.name)))
+  }, [])
 
   const handleSave = async () => {
     if (!form.amount || !form.merchant?.trim()) return
@@ -39,6 +46,9 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
     } else {
       await db.transactions.add(updated)
     }
+
+    // Auto-save category as preset if new
+    await addPresetIfNew(updated.category)
 
     // Optional: push to Supabase (for new or edited items)
     try {
@@ -99,6 +109,21 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
     onClose()
   }
 
+  const handleQuickCategory = (cat: string) => {
+    setForm({ ...form, category: cat })
+  }
+
+  const handleAddNewCategory = async () => {
+    if (newCategoryName.trim()) {
+      await addPresetIfNew(newCategoryName.trim())
+      const updated = await getAllPresets()
+      setPresets(updated.map(p => p.name))
+      setForm({ ...form, category: newCategoryName.trim() })
+      setNewCategoryName("")
+      setShowNewCategoryInput(false)
+    }
+  }
+
   if (!transaction) return null
 
   return (
@@ -155,7 +180,7 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
               </div>
             </div>
 
-            {/* Category + Note */}
+            {/* Category */}
             <div>
               <label className="text-sm font-medium block mb-1">Category</label>
               <input
@@ -165,6 +190,53 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className="w-full p-4 rounded-2xl border"
               />
+            </div>
+
+            {/* Quick Category Presets */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">QUICK CATEGORIES</p>
+              <div className="flex flex-wrap gap-2">
+                {presets.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => handleQuickCategory(cat)}
+                    className={`px-3 py-1.5 rounded-2xl text-sm font-medium transition-colors ${
+                      form.category === cat 
+                        ? "bg-black text-white" 
+                        : "bg-secondary hover:bg-primary/10"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setShowNewCategoryInput(true)}
+                  className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-2xl text-sm font-medium"
+                >
+                  + New
+                </button>
+              </div>
+
+              {showNewCategoryInput && (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="e.g. pet food"
+                    className="flex-1 px-4 py-2 border rounded-2xl text-sm"
+                  />
+                  <button 
+                    type="button"
+                    onClick={handleAddNewCategory} 
+                    className="px-4 bg-black text-white rounded-2xl text-sm font-medium"
+                  >
+                    Add
+                  </button>
+                </div>
+              )}
             </div>
 
             <div>
