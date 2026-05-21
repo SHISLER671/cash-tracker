@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft, Inbox, Trash2, Check, X } from "lucide-react"
-import { db, markReceiptProcessed, bulkMarkReceiptsProcessed, deleteReceipt, bulkDeleteReceipts, type Receipt } from "@/lib/db"
+import { db, markReceiptProcessed, bulkMarkReceiptsProcessed, deleteReceipt, bulkDeleteReceipts, type Receipt, getAllPresets, addPresetIfNew } from "@/lib/db"
 import { formatDistanceToNow } from "date-fns"
 import EditTransactionModal from "@/components/EditTransactionModal"
 
@@ -14,6 +14,16 @@ export default function InboxPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
   const [editingReceipt, setEditingReceipt] = useState<Receipt | null>(null)
+  const [presets, setPresets] = useState<string[]>(["gas", "food", "medical", "other"])
+
+  // Load dynamic presets
+  useEffect(() => {
+    getAllPresets().then(p => {
+      const defaultCats = ["gas", "food", "medical", "other"]
+      const allPresets = [...new Set([...defaultCats, ...p.map(pr => pr.name)])]
+      setPresets(allPresets)
+    })
+  }, [])
 
   const receipts = useLiveQuery(async () => {
     return await db.receipts.where('processed').equals(0).reverse().sortBy('createdAt')
@@ -40,6 +50,7 @@ export default function InboxPage() {
     if (selectedIds.size === 0) return
     setIsProcessing(true)
     await bulkMarkReceiptsProcessed(Array.from(selectedIds), category)
+    await addPresetIfNew(category) // save as preset
     setSelectedIds(new Set())
     setShowCategoryPicker(false)
     setIsProcessing(false)
@@ -56,6 +67,7 @@ export default function InboxPage() {
   const handleSingleCategorize = async (id: number, category: string) => {
     setIsProcessing(true)
     await markReceiptProcessed(id, category)
+    await addPresetIfNew(category)
     setIsProcessing(false)
   }
 
@@ -120,6 +132,7 @@ export default function InboxPage() {
                 <ReceiptCard
                   key={receipt.id}
                   receipt={receipt}
+                  presets={presets}
                   isSelected={selectedIds.has(receipt.id!)}
                   onToggleSelect={() => toggleSelect(receipt.id!)}
                   onCategorize={(cat) => handleSingleCategorize(receipt.id!, cat)}
@@ -143,7 +156,7 @@ export default function InboxPage() {
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {["gas", "food", "medical", "other"].map((cat) => (
+              {presets.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => handleApplyCategory(cat)}
@@ -178,6 +191,7 @@ export default function InboxPage() {
 
 function ReceiptCard({
   receipt,
+  presets,
   isSelected,
   onToggleSelect,
   onCategorize,
@@ -186,6 +200,7 @@ function ReceiptCard({
   disabled,
 }: {
   receipt: Receipt
+  presets: string[]
   isSelected: boolean
   onToggleSelect: () => void
   onCategorize: (category: string) => void
@@ -220,13 +235,13 @@ function ReceiptCard({
           </div>
         </div>
 
-        <div className="flex gap-1 mt-2">
-          {["gas", "food", "medical", "other"].map((cat) => (
+        <div className="flex gap-1 mt-2 flex-wrap">
+          {presets.map((cat) => (
             <button
               key={cat}
               onClick={(e) => { e.stopPropagation(); onCategorize(cat) }}
               disabled={disabled}
-              className="px-2 py-1 rounded text-xs font-semibold text-foreground bg-secondary transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+              className="px-3 py-1 rounded text-xs font-semibold text-foreground bg-secondary transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
             >
               {cat.toUpperCase()}
             </button>
