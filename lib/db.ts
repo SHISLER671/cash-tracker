@@ -1,12 +1,12 @@
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type EntityTable } from "dexie"
 
 export interface Transaction {
   id?: number
   date: Date
   amount: number
-  merchant: string
+  merchant?: string
   category: string
-  type: 'in' | 'out'
+  type: "in" | "out"
   note?: string
   synced?: boolean
 }
@@ -14,11 +14,12 @@ export interface Transaction {
 export interface Receipt {
   id?: number
   imageData: string
-  amount: number
-  merchant?: string
-  category?: string
   createdAt: Date
-  processed: number
+  processed: 0 | 1
+  amount?: number
+  merchant?: string
+  date?: string
+  category?: string
 }
 
 export interface Budget {
@@ -28,16 +29,23 @@ export interface Budget {
   limit: number
 }
 
-export const db = new Dexie('CashTracker') as Dexie & {
-  transactions: EntityTable<Transaction, 'id'>
-  receipts: EntityTable<Receipt, 'id'>
-  budgets: EntityTable<Budget, 'id'>
+export interface Preset {
+  id?: number
+  name: string
 }
 
-db.version(36).stores({
-  transactions: '++id, date, amount, category, type, synced',
-  receipts: '++id, createdAt, processed',
-  budgets: '++id, month, category'
+export const db = new Dexie("CashTracker") as Dexie & {
+  transactions: EntityTable<Transaction, "id">
+  receipts: EntityTable<Receipt, "id">
+  budgets: EntityTable<Budget, "id">
+  presets: EntityTable<Preset, "id">
+}
+
+db.version(42).stores({
+  transactions: "++id, date, amount, category, type, synced, merchant",
+  receipts: "++id, createdAt, processed",
+  budgets: "++id, month, category",
+  presets: "++id, name"
 })
 
 // Receipt helpers
@@ -70,4 +78,4 @@ export const clearDraft = async () => {
   localStorage.removeItem('transaction_draft')
 }
 
-export type { Transaction, Receipt, Budget }
+export type { Transaction, Receipt, Budget, Preset }
