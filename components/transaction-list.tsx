@@ -10,6 +10,8 @@ interface TransactionListProps {
   transactions: Transaction[]
   onRefresh?: () => Promise<void>
   onEdit?: (transaction: Transaction) => void
+  possibleDuplicates?: any[]
+  onFlagClick?: (dup: any) => void
 }
 
 function groupTransactionsByDate(transactions: Transaction[]) {
@@ -41,7 +43,7 @@ function groupTransactionsByDate(transactions: Transaction[]) {
   return groups
 }
 
-export function TransactionList({ transactions, onRefresh, onEdit }: TransactionListProps) {
+export function TransactionList({ transactions, onRefresh, onEdit, possibleDuplicates, onFlagClick }: TransactionListProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -115,9 +117,9 @@ export function TransactionList({ transactions, onRefresh, onEdit }: Transaction
       <div className="p-4 space-y-6">
         {hasTransactions ? (
           <>
-            <TransactionGroup label="Today" transactions={groups.today} onEdit={onEdit} />
-            <TransactionGroup label="Yesterday" transactions={groups.yesterday} onEdit={onEdit} />
-            <TransactionGroup label="Earlier" transactions={groups.earlier} onEdit={onEdit} />
+            <TransactionGroup label="Today" transactions={groups.today} onEdit={onEdit} possibleDuplicates={possibleDuplicates} onFlagClick={onFlagClick} />
+            <TransactionGroup label="Yesterday" transactions={groups.yesterday} onEdit={onEdit} possibleDuplicates={possibleDuplicates} onFlagClick={onFlagClick} />
+            <TransactionGroup label="Earlier" transactions={groups.earlier} onEdit={onEdit} possibleDuplicates={possibleDuplicates} onFlagClick={onFlagClick} />
           </>
         ) : (
           <div className="flex flex-col items-center justify-center py-16 text-center">
