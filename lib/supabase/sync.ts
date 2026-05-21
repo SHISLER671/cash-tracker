@@ -35,13 +35,9 @@ export async function pullFromPartner() {
     .select("*")
     .order("created_at", { ascending: false })
 
-  if (error || !data) {
-    console.log("❌ Supabase pull failed", error)
-    return
-  }
+  if (error || !data) return
 
   const existing = await db.transactions.toArray()
-  console.log(`📊 ${existing.length} local | ${data.length} remote transactions`)
 
   const possibleDuplicates: any[] = []
   const newTransactions: Transaction[] = []
@@ -53,10 +49,11 @@ export async function pullFromPartner() {
       const daysDiff = Math.abs(new Date(remote.date).getTime() - local.date.getTime()) / (1000 * 3600 * 24)
       const amountDiff = Math.abs(remote.amount - local.amount)
 
-      // Very lenient rules — catches almost all real duplicates
+      // Tight rules — only flag very likely duplicates
       if (
-        daysDiff <= 7 ||                    // within 1 week
-        amountDiff <= 15                    // within $15
+        daysDiff <= 1 &&                     // same day or next day
+        amountDiff <= 5 &&                   // within $5
+        (local.category.toLowerCase() === (remote.category || "").toLowerCase() || !remote.category)
       ) {
         isDuplicate = true
         possibleDuplicates.push({
@@ -64,7 +61,6 @@ export async function pullFromPartner() {
           remote,
           reason: `Close match: $${local.amount} vs $${remote.amount} (${daysDiff.toFixed(1)} days apart)`
         })
-        console.log("⚠️ DUPLICATE FLAGGED:", possibleDuplicates[possibleDuplicates.length - 1])
         break
       }
     }
@@ -85,7 +81,6 @@ export async function pullFromPartner() {
 
   if (newTransactions.length > 0) {
     await db.transactions.bulkAdd(newTransactions)
-    console.log(`✅ Added ${newTransactions.length} new transactions`)
   }
 
   if (possibleDuplicates.length > 0) {
