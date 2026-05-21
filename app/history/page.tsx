@@ -3,14 +3,14 @@
 import { useState, useEffect, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
-import { ArrowLeft, Flag } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { db, type Transaction } from "@/lib/db"
 import EditTransactionModal from "@/components/EditTransactionModal"
 import { TransactionList } from "@/components/transaction-list"
 import { autoPullIfNeeded } from "@/lib/supabase/sync"
 
 function HistoryPageSkeleton() {
-  return <div className="min-h-screen bg-background flex items-center justify-center">Loading...</div>
+  return <div className="min-h-screen bg-background flex items-center justify-center">Loading history...</div>
 }
 
 function HistoryPageContent() {
@@ -20,7 +20,6 @@ function HistoryPageContent() {
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState<any>(null)
 
-  // Load duplicates and auto-pull on every visit
   useEffect(() => {
     autoPullIfNeeded()
 
@@ -50,6 +49,11 @@ function HistoryPageContent() {
     setShowReviewModal(true)
   }
 
+  const closeModal = () => {
+    setShowReviewModal(false)
+    setSelectedGroup(null)
+  }
+
   const handleDeleteFromGroup = async (dup: any) => {
     if (dup.local?.id) await db.transactions.delete(dup.local.id)
     const remaining = possibleDuplicates.filter(d => d !== dup)
@@ -57,11 +61,19 @@ function HistoryPageContent() {
     localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
   }
 
-  const handleKeepBothFromGroup = () => {
-    const remaining = possibleDuplicates.filter(d => d !== selectedGroup)
-    setPossibleDuplicates(remaining)
-    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
-    setShowReviewModal(false)
+  const handleSaveAndClose = () => {
+    closeModal()
+    window.location.reload() // forces full refresh + sync
+  }
+
+  // Safe date formatting helper
+  const formatDate = (date: any) => {
+    try {
+      const d = date instanceof Date ? date : new Date(date)
+      return d.toLocaleDateString()
+    } catch {
+      return "Unknown date"
+    }
   }
 
   return (
@@ -89,15 +101,16 @@ function HistoryPageContent() {
           <div className="w-full max-w-md bg-white rounded-3xl shadow-earth-lg max-h-[90vh] overflow-auto">
             <div className="p-6 border-b">
               <h2 className="text-xl font-bold">Possible Duplicate</h2>
-              <p className="text-sm text-muted-foreground mt-1">{selectedGroup.reason}</p>
+              <p className="text-sm text-muted-foreground mt-1">{selectedGroup.reason || "These entries look similar"}</p>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-8">
+              {/* Local entry */}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-3">ENTRY 1 (LOCAL)</p>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">LOCAL ENTRY</p>
                 <div className="bg-card p-4 rounded-2xl">
-                  <p className="font-medium">${selectedGroup.local.amount} • {selectedGroup.local.merchant}</p>
-                  <p className="text-sm text-muted-foreground">{selectedGroup.local.category} • {selectedGroup.local.date.toLocaleDateString()}</p>
+                  <p className="font-medium">${selectedGroup.local?.amount?.toFixed(2) || "?"} • {selectedGroup.local?.merchant || "Unknown"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedGroup.local?.category || "other"} • {formatDate(selectedGroup.local?.date)}</p>
                 </div>
                 <button
                   onClick={() => handleDeleteFromGroup(selectedGroup)}
@@ -107,19 +120,20 @@ function HistoryPageContent() {
                 </button>
               </div>
 
+              {/* Remote entry */}
               <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-3">ENTRY 2 (FROM PARTNER)</p>
+                <p className="text-xs font-semibold text-muted-foreground mb-2">FROM PARTNER</p>
                 <div className="bg-card p-4 rounded-2xl">
-                  <p className="font-medium">${selectedGroup.remote.amount} • {selectedGroup.remote.merchant}</p>
-                  <p className="text-sm text-muted-foreground">{selectedGroup.remote.category} • {new Date(selectedGroup.remote.date).toLocaleDateString()}</p>
+                  <p className="font-medium">${selectedGroup.remote?.amount?.toFixed(2) || "?"} • {selectedGroup.remote?.merchant || "Unknown"}</p>
+                  <p className="text-sm text-muted-foreground">{selectedGroup.remote?.category || "other"} • {formatDate(selectedGroup.remote?.date)}</p>
                 </div>
                 <button
                   onClick={() => {
-                    // Delete the remote one from local copy (we keep the local)
+                    // Keep local, delete remote from our copy
                     const remaining = possibleDuplicates.filter(d => d !== selectedGroup)
                     setPossibleDuplicates(remaining)
                     localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
-                    setShowReviewModal(false)
+                    closeModal()
                   }}
                   className="mt-3 w-full py-3 bg-amber-600 text-white rounded-2xl font-medium"
                 >
@@ -129,21 +143,8 @@ function HistoryPageContent() {
             </div>
 
             <div className="p-4 border-t flex gap-3">
-              <button
-                onClick={() => setShowReviewModal(false)}
-                className="flex-1 py-4 text-muted-foreground font-medium"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => {
-                  setShowReviewModal(false)
-                  window.location.reload() // force refresh + sync
-                }}
-                className="flex-1 py-4 bg-black text-white font-semibold rounded-2xl"
-              >
-                Save & Close
-              </button>
+              <button onClick={closeModal} className="flex-1 py-4 text-muted-foreground font-medium">Back</button>
+              <button onClick={handleSaveAndClose} className="flex-1 py-4 bg-black text-white font-semibold rounded-2xl">Save & Close</button>
             </div>
           </div>
         </div>

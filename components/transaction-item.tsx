@@ -22,29 +22,29 @@ export function TransactionItem({ transaction, onEdit, isDuplicate, onFlagClick 
         isDuplicate && "ring-2 ring-amber-400"
       )}
     >
-      {/* Flag icon for duplicates */}
+      {/* Prominent red flag for duplicates */}
       {isDuplicate && onFlagClick && (
         <button
           onClick={(e) => {
             e.stopPropagation()
             onFlagClick()
           }}
-          className="absolute left-3 top-3 text-amber-500 hover:text-amber-600"
+          className="absolute left-4 top-4 text-red-500 hover:text-red-600 transition-colors"
         >
-          <Flag className="h-5 w-5" />
+          <Flag className="h-6 w-6 fill-red-500" />
         </button>
       )}
 
       {/* Category Icon */}
       <div className={cn(
-        "flex items-center justify-center w-12 h-12 rounded-full text-sm font-bold",
+        "flex items-center justify-center w-12 h-12 rounded-full text-sm font-bold flex-shrink-0",
         isIncome ? "bg-income/20 text-income" : "bg-secondary text-muted-foreground"
       )}>
         {categoryIcons[transaction.category] || "📦"}
       </div>
 
       {/* Details */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pl-8"> {/* extra padding for flag */}
         <p className="text-foreground font-medium">
           {categoryLabels[transaction.category] || transaction.category}
         </p>
