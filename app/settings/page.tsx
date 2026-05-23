@@ -9,14 +9,6 @@ import { db } from "@/lib/db"
 import { format, formatDistanceToNow } from "date-fns"
 import { getSyncStatus, pushToPartner, pullFromPartner, type SyncStatus } from "@/lib/supabase/sync"
 
-const categoryIcons: Record<string, string> = {
-  gas: "GAS",
-  food: "FOOD", 
-  medical: "MED",
-  other: "OTHER",
-}
-
-// Default budgets
 const defaultBudgets = {
   gas: 150,
   food: 400,
@@ -36,18 +28,19 @@ export default function SettingsPage() {
 
   // Load sync status
   useEffect(() => {
-    setSyncStatus(getSyncStatus())
+    const status = getSyncStatus()
+    setSyncStatus(status)
   }, [])
 
-  // Get budgets
+  // Budgets
   const budgets = useLiveQuery(async () => {
     const stored = await db.budgets.where("month").equals(currentMonth).toArray()
-    const budgetMap: Record<string, number> = { ...defaultBudgets }
-    stored.forEach((b) => { budgetMap[b.category] = b.limit })
-    return budgetMap
+    const map: Record<string, number> = { ...defaultBudgets }
+    stored.forEach(b => { map[b.category] = b.limit })
+    return map
   }, [currentMonth])
 
-  // Get spending
+  // Spending this month
   const spending = useLiveQuery(async () => {
     const all = await db.transactions.toArray()
     const monthStart = new Date(currentMonth + "-01")
@@ -67,7 +60,7 @@ export default function SettingsPage() {
   const storageUsed = useLiveQuery(async () => {
     const count = await db.transactions.count()
     return Math.round(count * 2)
-  })
+  }, [])
 
   const handleEditBudget = (category: string) => {
     setEditingCategory(category)
@@ -88,7 +81,7 @@ export default function SettingsPage() {
     await db.transactions.where("date").below(ninetyDaysAgo).delete()
   }
 
-  // Fixed Push
+  // Improved Push
   const handlePushToPartner = async () => {
     setIsPushing(true)
     setSyncMessage(null)
@@ -96,24 +89,24 @@ export default function SettingsPage() {
     try {
       const unsynced = await db.transactions.where("synced").equals(false).toArray()
       if (unsynced.length === 0) {
-        setSyncMessage("Nothing to share")
-        setTimeout(() => setSyncMessage(null), 2000)
+        setSyncMessage("Nothing new to share")
+        setTimeout(() => setSyncMessage(null), 2500)
         return
       }
 
       await pushToPartner(unsynced)
       setSyncMessage(`Shared ${unsynced.length} transaction${unsynced.length > 1 ? 's' : ''}`)
     } catch (e) {
-      console.error(e)
-      setSyncMessage("Push failed")
+      console.error("Push error:", e)
+      setSyncMessage("Push failed - check console")
     } finally {
       setIsPushing(false)
       setSyncStatus(getSyncStatus())
-      setTimeout(() => setSyncMessage(null), 3000)
+      setTimeout(() => setSyncMessage(null), 4000)
     }
   }
 
-  // Fixed Pull
+  // Improved Pull
   const handlePullFromPartner = async () => {
     setIsPulling(true)
     setSyncMessage(null)
@@ -122,16 +115,14 @@ export default function SettingsPage() {
       await pullFromPartner()
       setSyncMessage("Received latest transactions")
     } catch (e) {
-      console.error(e)
-      setSyncMessage("Pull failed")
+      console.error("Pull error:", e)
+      setSyncMessage("Pull failed - check console")
     } finally {
       setIsPulling(false)
       setSyncStatus(getSyncStatus())
-      setTimeout(() => setSyncMessage(null), 3000)
+      setTimeout(() => setSyncMessage(null), 4000)
     }
   }
-
-  const categories = ["gas", "food", "medical", "other"]
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -144,13 +135,13 @@ export default function SettingsPage() {
           <div className="w-11" />
         </header>
 
-        {/* Monthly Budgets Section */}
+        {/* Monthly Budgets */}
         <section className="mt-6">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Budgets</h2>
           <div className="grid grid-cols-2 gap-3">
-            {categories.map((category) => (
+            {["gas", "food", "medical", "other"].map((category) => (
               <button key={category} onClick={() => handleEditBudget(category)} className="flex flex-col items-center gap-1 rounded-xl bg-card p-4 shadow-earth transition-all hover:shadow-earth-lg active:scale-98">
-                <span className="text-xs font-semibold uppercase text-muted-foreground">{categoryIcons[category]}</span>
+                <span className="text-xs font-semibold uppercase text-muted-foreground">{category.toUpperCase()}</span>
                 <span className="text-2xl font-bold text-foreground">${budgets?.[category] ?? defaultBudgets[category as keyof typeof defaultBudgets]}</span>
                 <span className="text-xs text-muted-foreground">spent ${spending?.[category as keyof typeof spending]?.toFixed(0) ?? 0}</span>
               </button>
@@ -158,16 +149,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Add Category Placeholder */}
-        <section className="mt-6">
-          <button disabled className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-card/50 py-4 text-muted-foreground opacity-50">
-            <Plus className="h-5 w-5" />
-            <span className="text-sm font-medium">ADD CATEGORY</span>
-            <span className="text-xs">(Coming Soon)</span>
-          </button>
-        </section>
-
-        {/* Storage Section */}
+        {/* Storage */}
         <section className="mt-8">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Storage</h2>
           <div className="flex items-center justify-between rounded-xl bg-card p-4 shadow-earth">
@@ -184,29 +166,31 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Partner Sync Section */}
+        {/* Partner Sync */}
         <section className="mt-8">
           <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Users className="h-4 w-4" />
-            Partner Sync
+            PARTNER SYNC
           </h2>
 
           {syncMessage && (
-            <div className="mb-4 rounded-lg bg-primary/10 px-4 py-2 text-sm text-foreground">
+            <div className={`mb-4 rounded-lg px-4 py-3 text-sm ${syncMessage.includes("Shared") || syncMessage.includes("Received") ? "bg-emerald-100 text-emerald-700" : syncMessage.includes("failed") ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
               {syncMessage}
             </div>
           )}
 
-          <div className="flex flex-col gap-3">
+          <div className="space-y-3">
+            {/* Share */}
             <div className="rounded-xl bg-card p-4 shadow-earth">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Upload className="h-5 w-5 text-income" />
                   <div>
-                    <p className="text-sm font-medium text-foreground">Share with Partner</p>
+                    <p className="text-sm font-medium">Share with Partner</p>
                     <p className="text-xs text-muted-foreground">
+                      {syncStatus.pendingCount > 0 && <span className="text-amber-500">({syncStatus.pendingCount} unsynced) </span>}
                       {syncStatus.lastPushed 
-                        ? `Last shared: ${formatDistanceToNow(new Date(syncStatus.lastPushed), { addSuffix: true })}`
+                        ? `Last shared ${formatDistanceToNow(new Date(syncStatus.lastPushed), { addSuffix: true })}`
                         : 'Never shared'}
                     </p>
                   </div>
@@ -214,22 +198,23 @@ export default function SettingsPage() {
                 <button
                   onClick={handlePushToPartner}
                   disabled={isPushing}
-                  className="flex items-center gap-2 rounded-lg bg-income px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg bg-income px-5 py-2 text-sm font-semibold text-white transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
                 >
                   {isPushing ? "SHARING..." : "SHARE"}
                 </button>
               </div>
             </div>
 
+            {/* Pull */}
             <div className="rounded-xl bg-card p-4 shadow-earth">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Download className="h-5 w-5 text-primary" />
                   <div>
-                    <p className="text-sm font-medium text-foreground">Check for Updates</p>
+                    <p className="text-sm font-medium">Check for Updates</p>
                     <p className="text-xs text-muted-foreground">
                       {syncStatus.lastPulled 
-                        ? `Last checked: ${formatDistanceToNow(new Date(syncStatus.lastPulled), { addSuffix: true })}`
+                        ? `Last checked ${formatDistanceToNow(new Date(syncStatus.lastPulled), { addSuffix: true })}`
                         : 'Never checked'}
                     </p>
                   </div>
@@ -237,7 +222,7 @@ export default function SettingsPage() {
                 <button
                   onClick={handlePullFromPartner}
                   disabled={isPulling}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
+                  className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white transition-all hover:brightness-95 active:scale-95 disabled:opacity-50"
                 >
                   {isPulling ? "CHECKING..." : "CHECK"}
                 </button>
@@ -246,7 +231,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* Connect Accounts Section */}
+        {/* Connect Accounts */}
         <section className="mt-8 mb-8">
           <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             <Lock className="h-4 w-4" />

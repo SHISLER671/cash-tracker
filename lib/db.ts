@@ -41,7 +41,7 @@ export const db = new Dexie("CashTracker") as Dexie & {
   presets: EntityTable<Preset, "id">
 }
 
-db.version(45).stores({
+db.version(46).stores({
   transactions: "++id, date, amount, category, type, synced, merchant",
   receipts: "++id, createdAt, processed",
   budgets: "++id, month, category",
