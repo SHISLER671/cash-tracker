@@ -10,7 +10,15 @@ export type SyncStatus = {
 
 export async function pushToPartner(transactions: Transaction[]) {
   if (!supabase) return
-  const toPush = transactions.filter(t => !t.synced)
+
+  // Only process transactions that actually have an ID (safety guard)
+  const toPush = transactions.filter(t => Boolean(t.id) && !t.synced)
+
+  if (toPush.length === 0) {
+    console.log("No valid unsynced transactions to push")
+    return
+  }
+
   for (const t of toPush) {
     const { error } = await supabase.from("shared_transactions").insert({
       date: t.date.toISOString(),
@@ -21,7 +29,13 @@ export async function pushToPartner(transactions: Transaction[]) {
       note: t.note || null,
       device_id: `web-${Date.now()}`,
     })
-    if (!error) await db.transactions.update(t.id!, { synced: true })
+
+    if (!error) {
+      // Safe update — we already filtered for valid id
+      await db.transactions.update(t.id as number, { synced: true })
+    } else {
+      console.error("Failed to push one transaction:", error, t)
+    }
   }
 }
 
