@@ -49,39 +49,32 @@ export async function pullFromPartner() {
     .select("*")
     .order("created_at", { ascending: false })
 
-  if (error || !data) return
+  if (error || !data) {
+    console.error("Pull error:", error)
+    return
+  }
 
   const existing = await db.transactions.toArray()
 
-  const possibleDuplicates: any[] = []
   const newTransactions: Transaction[] = []
 
   for (const remote of data) {
-    let isDuplicate = false
+    // STRICTER deduplication: exact date (day), exact amount, category
+    const remoteDateStr = new Date(remote.date).toISOString().split('T')[0] // YYYY-MM-DD only
 
-    for (const local of existing) {
-      const daysDiff = Math.abs(new Date(remote.date).getTime() - local.date.getTime()) / (1000 * 3600 * 24)
-      const amountDiff = Math.abs(remote.amount - local.amount)
-
-      // Tight rules — only flag very likely duplicates
-      if (
-        daysDiff <= 1 &&                     // same day or next day
-        amountDiff <= 5 &&                   // within $5
-        (local.category.toLowerCase() === (remote.category || "").toLowerCase() || !remote.category)
-      ) {
-        isDuplicate = true
-        possibleDuplicates.push({
-          local,
-          remote,
-          reason: `Close match: $${local.amount} vs $${remote.amount} (${daysDiff.toFixed(1)} days apart)`
-        })
-        break
-      }
-    }
+    const isDuplicate = existing.some(local => {
+      const localDateStr = local.date.toISOString().split('T')[0]
+      return (
+        localDateStr === remoteDateStr &&
+        local.amount === remote.amount &&
+        local.category.toLowerCase() === (remote.category || "").toLowerCase() &&
+        local.type === remote.type
+      )
+    })
 
     if (!isDuplicate) {
       newTransactions.push({
-        id: undefined,
+        id: undefined,                    // Dexie will auto-assign
         date: new Date(remote.date),
         amount: remote.amount,
         merchant: remote.merchant || "",
@@ -94,17 +87,13 @@ export async function pullFromPartner() {
   }
 
   if (newTransactions.length > 0) {
+    console.log(`✅ Adding ${newTransactions.length} new transactions from partner`)
     await db.transactions.bulkAdd(newTransactions)
+  } else {
+    console.log("✅ No new transactions to pull")
   }
 
-  if (possibleDuplicates.length > 0) {
-    localStorage.setItem("possibleDuplicates", JSON.stringify(possibleDuplicates))
-    toast.warning(`${possibleDuplicates.length} possible duplicate(s) detected`, {
-      description: "Review before they sync everywhere",
-      action: { label: "Review Now", onClick: () => (window.location.href = "/history?review=duplicates") },
-    })
-  }
-
+  // Update last pulled timestamp
   localStorage.setItem("lastPulled", new Date().toISOString())
 }
 
