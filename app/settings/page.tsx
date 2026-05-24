@@ -81,13 +81,18 @@ export default function SettingsPage() {
     await db.transactions.where("date").below(ninetyDaysAgo).delete()
   }
 
-  // Improved Push
+  // Improved Push - safe version
   const handlePushToPartner = async () => {
     setIsPushing(true)
     setSyncMessage(null)
 
     try {
-      const unsynced = await db.transactions.where("synced").equals(false).toArray()
+      // SAFE query: fetch all + filter in memory (avoids index/key errors)
+      const allTx = await db.transactions.toArray()
+      const unsynced = allTx.filter(t => t.synced === false && Boolean(t.id))
+
+      console.log("✅ Found unsynced transactions:", unsynced.length, unsynced)
+
       if (unsynced.length === 0) {
         setSyncMessage("Nothing new to share")
         setTimeout(() => setSyncMessage(null), 2500)
