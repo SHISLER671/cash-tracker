@@ -33,6 +33,7 @@ export async function pushToPartner(transactions: Transaction[]) {
     if (!error) {
       // Safe update — we already filtered for valid id
       await db.transactions.update(t.id as number, { synced: true })
+      localStorage.setItem("lastPushed", new Date().toISOString())
     } else {
       console.error("Failed to push one transaction:", error, t)
     }
