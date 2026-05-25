@@ -1,23 +1,15 @@
-import { supabase } from "./client"
-import { db, type Transaction } from "@/lib/db"
-import { toast } from "sonner"
+import { createClient } from '@supabase/supabase-js'
+import { db, type Transaction } from '@/lib/db'
 
-export type SyncStatus = {
-  lastPushed: string | null
-  lastPulled: string | null
-  pendingCount: number
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+export const supabase = createClient(supabaseUrl, supabaseKey)
 
+// Push new transactions to Supabase (with account ownership)
 export async function pushToPartner(transactions: Transaction[]) {
-  if (!supabase) return
+  if (!supabase || transactions.length === 0) return
 
-  // Only process transactions that actually have an ID (safety guard)
-  const toPush = transactions.filter(t => Boolean(t.id) && !t.synced)
-
-  if (toPush.length === 0) {
-    console.log("No valid unsynced transactions to push")
-    return
-  }
+  const toPush = transactions.filter(t => Boolean(t.id) && !t.synced && t.accountId)
 
   for (const t of toPush) {
     const { error } = await supabase.from("shared_transactions").insert({
@@ -27,19 +19,19 @@ export async function pushToPartner(transactions: Transaction[]) {
       category: t.category,
       type: t.type,
       note: t.note || null,
-      device_id: `web-${Date.now()}`,
+      account_id: t.accountId,
     })
 
     if (!error) {
-      // Safe update — we already filtered for valid id
       await db.transactions.update(t.id as number, { synced: true })
       localStorage.setItem("lastPushed", new Date().toISOString())
     } else {
-      console.error("Failed to push one transaction:", error, t)
+      console.error("Push failed for transaction:", error, t)
     }
   }
 }
 
+// Pull transactions from Supabase (strong deduplication + account support)
 export async function pullFromPartner() {
   if (!supabase) return
 
@@ -60,8 +52,7 @@ export async function pullFromPartner() {
   const newTransactions: Transaction[] = []
 
   for (const remote of data) {
-    // STRICTER deduplication: exact date (day), exact amount, category
-    const remoteDateStr = new Date(remote.date).toISOString().split('T')[0] // YYYY-MM-DD only
+    const remoteDateStr = new Date(remote.date).toISOString().split('T')[0]
 
     const isDuplicate = existing.some(local => {
       const localDateStr = local.date.toISOString().split('T')[0]
@@ -69,13 +60,14 @@ export async function pullFromPartner() {
         localDateStr === remoteDateStr &&
         local.amount === remote.amount &&
         local.category.toLowerCase() === (remote.category || "").toLowerCase() &&
-        local.type === remote.type
+        local.type === remote.type &&
+        local.accountId === remote.account_id
       )
     })
 
     if (!isDuplicate) {
       newTransactions.push({
-        id: undefined,                    // Dexie will auto-assign
+        id: undefined,
         date: new Date(remote.date),
         amount: remote.amount,
         merchant: remote.merchant || "",
@@ -83,6 +75,8 @@ export async function pullFromPartner() {
         type: remote.type,
         note: remote.note || undefined,
         synced: true,
+        accountId: remote.account_id,
+        accountType: "cash",
       })
     }
   }
@@ -94,8 +88,13 @@ export async function pullFromPartner() {
     console.log("✅ No new transactions to pull")
   }
 
-  // Update last pulled timestamp
   localStorage.setItem("lastPulled", new Date().toISOString())
+}
+
+export type SyncStatus = {
+  lastPushed: string | null
+  lastPulled: string | null
+  pendingCount: number
 }
 
 export function getSyncStatus(): SyncStatus {
