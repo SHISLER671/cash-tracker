@@ -1,5 +1,13 @@
 import Dexie, { type EntityTable } from "dexie"
 
+export interface Account {
+  id?: number
+  name: string
+  owner: string
+  type: "cash" | "bank" | "crypto"
+  createdAt?: Date
+}
+
 export interface Transaction {
   id?: number
   date: Date
@@ -9,6 +17,8 @@ export interface Transaction {
   type: "in" | "out"
   note?: string
   synced?: boolean
+  accountId?: number          // ← NEW: links to Account
+  accountType?: "cash" | "bank" | "crypto"  // ← NEW: for quick display
 }
 
 export interface Receipt {
@@ -31,7 +41,7 @@ export interface Budget {
 
 export interface Preset {
   id?: number
-  name: string   // e.g. "pet food", "coffee", "rent", "groceries"
+  name: string
 }
 
 export const db = new Dexie("CashTracker") as Dexie & {
@@ -39,16 +49,18 @@ export const db = new Dexie("CashTracker") as Dexie & {
   receipts: EntityTable<Receipt, "id">
   budgets: EntityTable<Budget, "id">
   presets: EntityTable<Preset, "id">
+  accounts: EntityTable<Account, "id">     // ← NEW table
 }
 
-db.version(46).stores({
-  transactions: "++id, date, amount, category, type, synced, merchant",
+db.version(47).stores({                       // ← bumped from 46 to 47
+  transactions: "++id, date, amount, category, type, synced, merchant, accountId",
   receipts: "++id, createdAt, processed",
   budgets: "++id, month, category",
-  presets: "++id, name"
+  presets: "++id, name",
+  accounts: "++id, name, owner, type"        // ← NEW store
 })
 
-// Receipt helpers
+// Rest of your helper functions stay exactly the same
 export const addReceiptToInbox = async (receipt: Omit<Receipt, 'id' | 'createdAt'>) => {
   return await db.receipts.add({ ...receipt, createdAt: new Date(), processed: 0 })
 }
@@ -66,7 +78,6 @@ export const bulkMarkReceiptsProcessed = async (ids: number[], category: string)
 export const deleteReceipt = async (id: number) => await db.receipts.delete(id)
 export const bulkDeleteReceipts = async (ids: number[]) => await db.receipts.bulkDelete(ids)
 
-// Preset helpers
 export const addPresetIfNew = async (name: string) => {
   if (!name?.trim()) return
   const trimmed = name.trim()
@@ -80,7 +91,6 @@ export const getAllPresets = async () => {
   return await db.presets.orderBy('name').toArray()
 }
 
-// Draft helpers
 export const saveDraft = async (draft: Partial<Transaction>) => {
   localStorage.setItem('transaction_draft', JSON.stringify(draft))
 }
@@ -92,4 +102,4 @@ export const clearDraft = async () => {
   localStorage.removeItem('transaction_draft')
 }
 
-export type { Transaction, Receipt, Budget, Preset }
+export type { Transaction, Receipt, Budget, Preset, Account }
