@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { X, Check, ArrowLeft, Upload } from "lucide-react"
-import { db, saveDraft, getDraft, clearDraft } from "@/lib/db"
+import { db, saveDraft, getDraft, clearDraft, type Account } from "@/lib/db"
 import { scanReceipt } from "@/lib/ocr"
 
 const categories: { id: string; label: string; icon: string }[] = [
@@ -61,6 +61,7 @@ function TransactionPageContent() {
   const [lastTransactionId, setLastTransactionId] = useState<number | null>(null)
   const [showDraftDialog, setShowDraftDialog] = useState(false)
   const [pendingDraft, setPendingDraft] = useState<Awaited<ReturnType<typeof getDraft>> | null>(null)
+  const [selectedAccountId, setSelectedAccountId] = useState<number | undefined>(undefined)
 
   // Check for quick add amount from URL
   useEffect(() => {
@@ -168,6 +169,15 @@ function TransactionPageContent() {
     return all.reduce((acc, t) => acc + (t.type === "in" ? t.amount : -t.amount), 0)
   }, [])
 
+  const accounts = useLiveQuery(() => db.accounts.toArray(), [])
+
+  // Auto-select first account (His Wallet) when accounts load
+  useEffect(() => {
+    if (accounts && accounts.length > 0 && !selectedAccountId) {
+      setSelectedAccountId(accounts[0].id)
+    }
+  }, [accounts, selectedAccountId])
+
   const parsedAmount = parseFloat(amount) || 0
   const afterBalance = type === "in" 
     ? (currentBalance ?? 0) + parsedAmount 
@@ -202,7 +212,7 @@ function TransactionPageContent() {
   }
 
   const handleSave = async () => {
-    if (!category || parsedAmount <= 0) return
+    if (!category || parsedAmount <= 0 || !selectedAccountId) return
     setIsSaving(true)
 
     try {
@@ -212,30 +222,23 @@ function TransactionPageContent() {
         type,
         amount: parsedAmount,
         note: note || undefined,
+        accountId: selectedAccountId,           // ← NEW
+        accountType: accounts?.find(a => a.id === selectedAccountId)?.type || "cash", // ← NEW
       })
 
-      // Clear any saved draft
       await clearDraft()
 
       setLastTransactionId(id as number)
       
-      // Vibrate if available
-      if (navigator.vibrate) {
-        navigator.vibrate(50)
-      }
+      if (navigator.vibrate) navigator.vibrate(50)
 
-      // Show success animation
       setShowSuccess(true)
       
       setTimeout(() => {
         setShowSuccess(false)
         setShowUndo(true)
         router.push("/")
-        
-        // Hide undo after 5 seconds
-        setTimeout(() => {
-          setShowUndo(false)
-        }, 5000)
+        setTimeout(() => setShowUndo(false), 5000)
       }, 1000)
     } catch (error) {
       console.error("Failed to save transaction:", error)
@@ -460,6 +463,26 @@ function TransactionPageContent() {
                   {dateOption === "today" ? "TODAY" : dateOption === "yesterday" ? "YESTERDAY" : "OTHER"}
                 </button>
               ))}
+            </div>
+
+            {/* Wallet Selector */}
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground mb-3">Which wallet?</p>
+              <div className="flex justify-center gap-2">
+                {accounts?.map((acc) => (
+                  <button
+                    key={acc.id}
+                    onClick={() => setSelectedAccountId(acc.id)}
+                    className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-all ${
+                      selectedAccountId === acc.id
+                        ? "bg-primary text-primary-foreground shadow-earth"
+                        : "bg-card text-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    {acc.name}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Optional Note */}
