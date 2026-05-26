@@ -237,8 +237,9 @@ function TransactionPageContent() {
         type,
         amount: parsedAmount,
         note: note || undefined,
-        accountId: selectedAccountId,           // ← NEW
-        accountType: accounts?.find(a => a.id === selectedAccountId)?.type || "cash", // ← NEW
+        accountId: selectedAccountId,
+        accountType: accounts?.find(a => a.id === selectedAccountId)?.type || "cash",
+        synced: false,
       })
 
       await clearDraft()
