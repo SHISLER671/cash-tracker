@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
-import { ArrowLeft, Plus, Lock, Trash2, Upload, Download, Users } from "lucide-react"
+import { ArrowLeft, Lock, Trash2, Upload, Download, Users, RefreshCw } from "lucide-react"
 import Link from "next/link"
-import { db } from "@/lib/db"
+import { db, type Account } from "@/lib/db"
 import { format, formatDistanceToNow } from "date-fns"
 import { getSyncStatus, pushToPartner, pullFromPartner, type SyncStatus } from "@/lib/supabase/sync"
 
@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ lastPushed: null, lastPulled: null, pendingCount: 0 })
   const [isPushing, setIsPushing] = useState(false)
   const [isPulling, setIsPulling] = useState(false)
+  const [isResyncing, setIsResyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
 
   // Load sync status
@@ -31,6 +32,24 @@ export default function SettingsPage() {
     const status = getSyncStatus()
     setSyncStatus(status)
   }, [])
+
+  // Accounts + Wallet Balances
+  const accounts = useLiveQuery(() => db.accounts.toArray(), [])
+  const walletBalances = useLiveQuery(async () => {
+    const allTx = await db.transactions.toArray()
+    const balances: Record<string, number> = {}
+
+    accounts?.forEach((acc) => {
+      const balance = allTx
+        .filter((t) => t.accountId === acc.id)
+        .reduce((sum, t) => sum + (t.type === "in" ? t.amount : -t.amount), 0)
+      balances[acc.name] = balance
+    })
+
+    const householdTotal = Object.values(balances).reduce((sum, b) => sum + b, 0)
+
+    return { balances, householdTotal }
+  }, [accounts])
 
   // Budgets
   const budgets = useLiveQuery(async () => {
@@ -79,6 +98,27 @@ export default function SettingsPage() {
     const ninetyDaysAgo = new Date()
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
     await db.transactions.where("date").below(ninetyDaysAgo).delete()
+  }
+
+  // Full Resync (clears local data and pulls everything fresh)
+  const handleFullResync = async () => {
+    if (!confirm("This will clear ALL local transactions and pull fresh data from Supabase.\n\nContinue?")) return
+
+    setIsResyncing(true)
+    setSyncMessage(null)
+
+    try {
+      await db.transactions.clear()
+      await pullFromPartner()
+      setSyncMessage("Full resync complete")
+    } catch (e) {
+      console.error("Resync error:", e)
+      setSyncMessage("Resync failed - check console")
+    } finally {
+      setIsResyncing(false)
+      setSyncStatus(getSyncStatus())
+      setTimeout(() => setSyncMessage(null), 4000)
+    }
   }
 
   // Improved Push - safe version
@@ -140,8 +180,29 @@ export default function SettingsPage() {
           <div className="w-11" />
         </header>
 
-        {/* Monthly Budgets */}
+        {/* Wallet Balances */}
         <section className="mt-6">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wallet Balances</h2>
+          <div className="space-y-3 rounded-xl bg-card p-4 shadow-earth">
+            {accounts?.map((acc) => (
+              <div key={acc.id} className="flex justify-between items-center">
+                <span className="font-medium">{acc.name}</span>
+                <span className="font-bold text-foreground">
+                  ${(walletBalances?.balances[acc.name] ?? 0).toFixed(2)}
+                </span>
+              </div>
+            ))}
+            <div className="border-t pt-3 flex justify-between font-semibold text-lg">
+              <span>Household Total</span>
+              <span className="text-emerald-600">
+                ${(walletBalances?.householdTotal ?? 0).toFixed(2)}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* Monthly Budgets */}
+        <section className="mt-8">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Budgets</h2>
           <div className="grid grid-cols-2 gap-3">
             {["gas", "food", "medical", "other"].map((category) => (
@@ -179,7 +240,7 @@ export default function SettingsPage() {
           </h2>
 
           {syncMessage && (
-            <div className={`mb-4 rounded-lg px-4 py-3 text-sm ${syncMessage.includes("Shared") || syncMessage.includes("Received") ? "bg-emerald-100 text-emerald-700" : syncMessage.includes("failed") ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+            <div className={`mb-4 rounded-lg px-4 py-3 text-sm ${syncMessage.includes("Shared") || syncMessage.includes("Received") || syncMessage.includes("resync") ? "bg-emerald-100 text-emerald-700" : syncMessage.includes("failed") ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
               {syncMessage}
             </div>
           )}
@@ -233,6 +294,16 @@ export default function SettingsPage() {
                 </button>
               </div>
             </div>
+
+            {/* Full Resync */}
+            <button
+              onClick={handleFullResync}
+              disabled={isResyncing}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-600 py-4 text-white font-semibold shadow-earth hover:brightness-95 active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-5 w-5 ${isResyncing ? "animate-spin" : ""}`} />
+              {isResyncing ? "RESYNCING..." : "FULL RESYNC (clear & refresh)"}
+            </button>
           </div>
         </section>
 
