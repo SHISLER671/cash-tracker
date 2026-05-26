@@ -171,6 +171,21 @@ function TransactionPageContent() {
 
   const accounts = useLiveQuery(() => db.accounts.toArray(), [])
 
+  // ONE-TIME SEED: Create the two wallets locally if missing
+  useEffect(() => {
+    const seedAccounts = async () => {
+      const count = await db.accounts.count()
+      if (count === 0) {
+        console.log("Seeding accounts locally...")
+        await db.accounts.bulkAdd([
+          { name: "His Wallet", owner: "PartnerHusband", type: "cash" },
+          { name: "Her Wallet", owner: "PartnerWife", type: "cash" }
+        ])
+      }
+    }
+    seedAccounts()
+  }, [])
+
   // Auto-select first account (His Wallet) when accounts load
   useEffect(() => {
     if (accounts && accounts.length > 0 && !selectedAccountId) {
@@ -469,19 +484,23 @@ function TransactionPageContent() {
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-3">Which wallet?</p>
               <div className="flex justify-center gap-2">
-                {accounts?.map((acc) => (
-                  <button
-                    key={acc.id}
-                    onClick={() => setSelectedAccountId(acc.id)}
-                    className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-all ${
-                      selectedAccountId === acc.id
-                        ? "bg-primary text-primary-foreground shadow-earth"
-                        : "bg-card text-foreground hover:bg-secondary"
-                    }`}
-                  >
-                    {acc.name}
-                  </button>
-                ))}
+                {accounts && accounts.length > 0 ? (
+                  accounts.map((acc) => (
+                    <button
+                      key={acc.id}
+                      onClick={() => setSelectedAccountId(acc.id)}
+                      className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-all ${
+                        selectedAccountId === acc.id
+                          ? "bg-primary text-primary-foreground shadow-earth"
+                          : "bg-card text-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      {acc.name}
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-xs text-muted-foreground">Loading wallets...</p>
+                )}
               </div>
             </div>
 
