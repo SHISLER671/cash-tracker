@@ -233,8 +233,8 @@
     border: 1px solid var(--border-luxe);
     border-radius: 1.5rem;
     box-shadow:
-      0 10px 25px -5px rgba(44, 36, 27, 0.12),
-      0 4px 8px -2px rgba(44, 36, 27, 0.08);
+      0 18px 40px -12px rgba(44, 36, 27, 0.22),
+      0 6px 14px -4px rgba(44, 36, 27, 0.12);
   }
 
   /* Big chunky luxe button (opt-in only - does NOT affect existing buttons) */
