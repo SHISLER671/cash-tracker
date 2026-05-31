@@ -204,7 +204,7 @@ function CapturePageContent() {
             <CameraViewfinder onCapture={handleCapture} isProcessing={state === "processing"} />
             {state === "processing" && <ProcessingOverlay />}
 
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-foreground via-foreground/90 to-transparent">
+            <div className="absolute bottom-0 left-0 right-0 px-4 pt-8 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-gradient-to-t from-foreground via-foreground/95 to-transparent">
               <div className="flex gap-3">
                 <button
                   onClick={() => fileInputRef.current?.click()}
