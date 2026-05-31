@@ -1,5 +1,38 @@
 import Dexie, { type EntityTable } from "dexie"
 
+// Generate a stable UUID. Uses crypto.randomUUID when available (all modern
+// mobile browsers, incl. Android Chrome) with a safe fallback.
+export function genUuid(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID()
+    }
+  } catch {
+    // fall through to manual generation
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === "x" ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
+// A persistent per-device id, generated once and stored in localStorage. Used
+// to tag rows so sync logs/debugging can tell which device created a record.
+export function getDeviceId(): string {
+  if (typeof window === "undefined") return "server"
+  try {
+    let id = localStorage.getItem("device_id")
+    if (!id) {
+      id = genUuid()
+      localStorage.setItem("device_id", id)
+    }
+    return id
+  } catch {
+    return "unknown-device"
+  }
+}
+
 export interface Account {
   id?: number
   name: string
@@ -10,6 +43,7 @@ export interface Account {
 
 export interface Transaction {
   id?: number
+  uid?: string                // ← NEW: stable client-side UUID, shared identity with Supabase row id
   date: Date
   amount: number
   merchant?: string
@@ -17,12 +51,15 @@ export interface Transaction {
   type: "in" | "out"
   note?: string
   synced?: boolean
+  lastSynced?: string         // ← NEW: ISO timestamp of last successful push/pull for this record
+  deviceId?: string           // ← NEW: which device created the record
   accountId?: number          // ← NEW: links to Account
   accountType?: "cash" | "bank" | "crypto"  // ← NEW: for quick display
 }
 
 export interface Receipt {
   id?: number
+  uid?: string                // ← NEW: stable client-side UUID
   imageData: string
   createdAt: Date
   processed: 0 | 1
@@ -59,6 +96,45 @@ db.version(48).stores({                       // ← bumped from 47 to 48 (prese
   budgets: "++id, month, category",
   presets: "++id, name, order",
   accounts: "++id, name, owner, type"
+})
+
+// v49: add a stable `uid` (UUID) index for transactions/receipts so local rows
+// share identity with their Supabase counterpart. This is the key to making
+// sync idempotent and preventing local duplicates. Existing rows are
+// backfilled with a generated uid during the upgrade.
+db.version(49)
+  .stores({
+    transactions: "++id, uid, date, amount, category, type, synced, merchant, accountId",
+    receipts: "++id, uid, createdAt, processed",
+    budgets: "++id, month, category",
+    presets: "++id, name, order",
+    accounts: "++id, name, owner, type",
+  })
+  .upgrade(async (tx) => {
+    await tx
+      .table("transactions")
+      .toCollection()
+      .modify((t: Transaction) => {
+        if (!t.uid) t.uid = genUuid()
+      })
+    await tx
+      .table("receipts")
+      .toCollection()
+      .modify((r: Receipt) => {
+        if (!r.uid) r.uid = genUuid()
+      })
+  })
+
+// Centralized auto-assignment of `uid` on every insert, regardless of which
+// call site creates the record (transaction page, capture, inbox, edit modal,
+// or a pull). This guarantees the requirement that every transaction/receipt
+// has a unique client-side id "if not already present" — if the caller (e.g. a
+// pull from Supabase) already supplied a uid, we keep it.
+db.transactions.hook("creating", (_primKey, obj) => {
+  if (!obj.uid) obj.uid = genUuid()
+})
+db.receipts.hook("creating", (_primKey, obj) => {
+  if (!obj.uid) obj.uid = genUuid()
 })
 
 // Rest of your helper functions stay exactly the same
@@ -154,6 +230,35 @@ export const reorderPresets = async (orderedIds: number[]) => {
   await db.transaction('rw', db.presets, async () => {
     await Promise.all(orderedIds.map((id, idx) => db.presets.update(id, { order: idx })))
   })
+}
+
+// Idempotent insert-or-update keyed on the stable `uid`. If a local row with
+// the same uid already exists we update it in place instead of inserting a
+// duplicate. Returns the local numeric id.
+export const upsertTransactionByUid = async (tx: Transaction): Promise<number> => {
+  if (!tx.uid) tx.uid = genUuid()
+  const existing = await db.transactions.where("uid").equals(tx.uid).first()
+  if (existing) {
+    await db.transactions.update(existing.id!, { ...tx, id: existing.id })
+    return existing.id!
+  }
+  return (await db.transactions.add(tx)) as number
+}
+
+// Wipes all synced data tables and resets the sync cursor so the next pull
+// rebuilds local state from scratch. Intentionally preserves accounts, budgets
+// and presets, which are NOT mirrored in Supabase and would otherwise be lost.
+export const clearSyncedLocalData = async () => {
+  await db.transaction("rw", db.transactions, db.receipts, async () => {
+    await db.transactions.clear()
+    await db.receipts.clear()
+  })
+  try {
+    localStorage.removeItem("syncCursor")
+    localStorage.removeItem("lastPulled")
+  } catch {
+    // ignore storage errors
+  }
 }
 
 export const saveDraft = async (draft: Partial<Transaction>) => {
