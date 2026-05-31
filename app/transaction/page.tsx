@@ -6,13 +6,7 @@ import { useLiveQuery } from "dexie-react-hooks"
 import { X, Check, ArrowLeft, Upload } from "lucide-react"
 import { db, saveDraft, getDraft, clearDraft, type Account } from "@/lib/db"
 import { scanReceipt } from "@/lib/ocr"
-
-const categories: { id: string; label: string; icon: string }[] = [
-  { id: "gas", label: "GAS", icon: "GAS" },
-  { id: "food", label: "FOOD", icon: "FOOD" },
-  { id: "medical", label: "MED", icon: "MED" },
-  { id: "other", label: "OTHER", icon: "OTHER" },
-]
+import { CategoryButtons } from "@/components/category-buttons"
 
 const numberPadKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "del"]
 
@@ -427,22 +421,7 @@ function TransactionPageContent() {
                 ${parsedAmount.toFixed(2)}
               </span>
             </p>
-            <div className="grid grid-cols-2 gap-4">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => handleCategorySelect(cat.id)}
-                  className={`flex flex-col items-center gap-2 rounded-2xl p-6 transition-all active:scale-95 ${
-                    category === cat.id
-                      ? "bg-primary text-primary-foreground shadow-earth-lg ring-2 ring-primary"
-                      : "bg-card text-foreground shadow-earth hover:bg-secondary"
-                  }`}
-                >
-                  <span className="text-2xl font-bold">{cat.icon}</span>
-                  <span className="text-sm font-semibold">{cat.label}</span>
-                </button>
-              ))}
-            </div>
+            <CategoryButtons value={category} onChange={handleCategorySelect} />
           </div>
         </div>
       )}
@@ -459,7 +438,7 @@ function TransactionPageContent() {
                 ${parsedAmount.toFixed(2)}
               </p>
               <p className="text-lg text-muted-foreground mt-2">
-                to {categories.find(c => c.id === category)?.label}?
+                to {category?.toUpperCase()}?
               </p>
             </div>
 
