@@ -76,7 +76,7 @@ export default function Home() {
     <div className="flex min-h-screen flex-col bg-background">
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-24">
         {/* Header */}
-        <header className="flex items-center justify-between border-b border-border py-4">
+        <header className="header-luxe sticky top-0 z-40 -mx-4 flex items-center justify-between px-4 py-5">
           <Link
             href="/settings"
             className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth transition-all hover:bg-secondary active:scale-95 active:bg-primary/20"
