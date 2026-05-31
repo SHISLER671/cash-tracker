@@ -8,7 +8,7 @@ export function CashDisplay({ amount }: CashDisplayProps) {
   const isPositive = amount >= 0;
   
   return (
-    <div className="card-luxe my-6 flex flex-col items-center gap-3 px-8 py-12">
+    <div className="card-luxe relative my-6 flex flex-col items-center gap-3 overflow-hidden px-8 py-12">
       <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
         Cash on Hand
       </span>
@@ -21,6 +21,9 @@ export function CashDisplay({ amount }: CashDisplayProps) {
           })}
         </span>
       </div>
+
+      {/* Subtle luxe accent line */}
+      <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-primary via-expense to-success" />
     </div>
   );
 }
