@@ -17,12 +17,13 @@ export function AddButton() {
 
   return (
     <>
-      {/* Floating + Button */}
+      {/* Floating + Button - Warm Earth Luxe */}
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 flex h-16 w-16 items-center justify-center rounded-3xl bg-primary text-white shadow-2xl shadow-primary/50 active:scale-95 transition-all hover:brightness-110 z-50"
+        aria-label="Add new receipt"
+        className="fixed bottom-8 right-6 z-50 flex h-20 w-20 items-center justify-center rounded-3xl border border-gold-light/40 bg-gradient-to-br from-gold-light to-gold-dark text-primary-foreground shadow-luxe transition-all hover:brightness-110 active:scale-95"
       >
-        <Plus className="h-8 w-8" />
+        <Plus className="h-10 w-10" />
       </button>
 
       {/* Bottom Sheet */}
@@ -30,7 +31,7 @@ export function AddButton() {
         <div className="fixed inset-0 z-[100] flex items-end bg-black/60" onClick={() => setIsOpen(false)}>
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md mx-auto bg-white rounded-t-3xl shadow-2xl overflow-hidden"
+            className="w-full max-w-md mx-auto bg-popover rounded-t-3xl shadow-luxe overflow-hidden"
           >
             {/* Handle bar */}
             <div className="flex justify-center pt-3 pb-1">
@@ -43,9 +44,11 @@ export function AddButton() {
               {/* Option 1: Take Photo */}
               <button
                 onClick={() => handleOption("/capture")}
-                className="w-full flex items-center gap-4 mb-4 p-5 rounded-3xl bg-card hover:bg-secondary active:scale-[0.98] transition-all text-left"
+                className="w-full flex items-center gap-4 mb-4 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.98] transition-all text-left"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-600 text-3xl">📸</div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/20 text-gold-dark">
+                  <Camera className="h-6 w-6" />
+                </div>
                 <div className="flex-1">
                   <div className="font-semibold text-lg">Take New Photo</div>
                   <div className="text-sm text-muted-foreground">Live camera - instant scan</div>
@@ -55,9 +58,11 @@ export function AddButton() {
               {/* Option 2: Upload Saved Photo */}
               <button
                 onClick={() => handleOption("/capture?mode=upload")}
-                className="w-full flex items-center gap-4 mb-4 p-5 rounded-3xl bg-card hover:bg-secondary active:scale-[0.98] transition-all text-left"
+                className="w-full flex items-center gap-4 mb-4 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.98] transition-all text-left"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-100 text-purple-600 text-3xl">📁</div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success/15 text-success">
+                  <Upload className="h-6 w-6" />
+                </div>
                 <div className="flex-1">
                   <div className="font-semibold text-lg">Upload Saved Photo</div>
                   <div className="text-sm text-muted-foreground">Pick from your camera roll</div>
@@ -67,9 +72,11 @@ export function AddButton() {
               {/* Option 3: Manual Entry */}
               <button
                 onClick={() => handleOption("/transaction")}
-                className="w-full flex items-center gap-4 p-5 rounded-3xl bg-card hover:bg-secondary active:scale-[0.98] transition-all text-left"
+                className="w-full flex items-center gap-4 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.98] transition-all text-left"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 text-3xl">✍️</div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/15 text-destructive">
+                  <Edit3 className="h-6 w-6" />
+                </div>
                 <div className="flex-1">
                   <div className="font-semibold text-lg">Type It In</div>
                   <div className="text-sm text-muted-foreground">No photo needed</div>
