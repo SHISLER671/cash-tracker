@@ -7,7 +7,7 @@ import { ArrowLeft, Lock, Trash2, Upload, Download, Users, RefreshCw } from "luc
 import Link from "next/link"
 import { db, type Account } from "@/lib/db"
 import { format, formatDistanceToNow } from "date-fns"
-import { getSyncStatus, pushToPartner, pullFromPartner, type SyncStatus } from "@/lib/supabase/sync"
+import { getSyncStatus, pushToPartner, pullFromPartner, clearLocalDataAndResync, type SyncStatus } from "@/lib/supabase/sync"
 
 const defaultBudgets = {
   gas: 150,
@@ -100,17 +100,19 @@ export default function SettingsPage() {
     await db.transactions.where("date").below(ninetyDaysAgo).delete()
   }
 
-  // Full Resync (clears local data and pulls everything fresh)
+  // Full Resync — clears local synced data (transactions + receipts), resets the
+  // sync cursor, and pulls everything fresh from Supabase so every record is
+  // inserted exactly once. Accounts, budgets and presets are preserved.
   const handleFullResync = async () => {
-    if (!confirm("This will clear ALL local transactions and pull fresh data from Supabase.\n\nContinue?")) return
+    if (!confirm("This will clear ALL local transactions and receipts, then pull fresh data from Supabase.\n\nYour accounts, budgets and categories are kept.\n\nContinue?")) return
 
     setIsResyncing(true)
     setSyncMessage(null)
 
     try {
-      await db.transactions.clear()
-      await pullFromPartner()
-      setSyncMessage("Full resync complete")
+      await clearLocalDataAndResync()
+      const count = await db.transactions.count()
+      setSyncMessage(`Full resync complete — ${count} transaction${count === 1 ? "" : "s"}`)
     } catch (e) {
       console.error("Resync error:", e)
       setSyncMessage("Resync failed - check console")
