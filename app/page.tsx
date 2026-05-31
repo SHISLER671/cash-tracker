@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useLiveQuery } from "dexie-react-hooks"
 import { useEffect } from "react"
-import { Settings, Clock, Inbox, BarChart3 } from "lucide-react"
+import { Settings, Clock, Inbox, BarChart3, TrendingUp, TrendingDown } from "lucide-react"
 import { db } from "@/lib/db"
 import { CashDisplay } from "@/components/cash-display"
 import { BudgetProgress } from "@/components/budget-progress"
@@ -60,6 +60,21 @@ export default function Home() {
       food: monthlyTransactions.filter((t) => t.category === "food").reduce((sum, t) => sum + t.amount, 0),
       medical: monthlyTransactions.filter((t) => t.category === "medical").reduce((sum, t) => sum + t.amount, 0),
       other: monthlyTransactions.filter((t) => t.category === "other").reduce((sum, t) => sum + t.amount, 0),
+    }
+  }, [currentMonth])
+
+  // Calculate this month's total income and spending (real data)
+  const monthlyStats = useLiveQuery(async () => {
+    const all = await db.transactions.toArray()
+    const monthStart = new Date(currentMonth + "-01")
+    const monthEnd = new Date(monthStart)
+    monthEnd.setMonth(monthEnd.getMonth() + 1)
+
+    const monthly = all.filter((t) => t.date >= monthStart && t.date < monthEnd)
+
+    return {
+      income: monthly.filter((t) => t.type === "in").reduce((sum, t) => sum + t.amount, 0),
+      spent: monthly.filter((t) => t.type === "out").reduce((sum, t) => sum + t.amount, 0),
     }
   }, [currentMonth])
 
@@ -121,6 +136,29 @@ export default function Home() {
           <>
             {/* Cash Display */}
             <CashDisplay amount={cashOnHand ?? 0} />
+
+            {/* Quick Stats - this month */}
+            <div className="mb-6 grid grid-cols-2 gap-4">
+              <div className="card-luxe flex flex-col p-5">
+                <div className="flex items-center gap-2 text-income">
+                  <TrendingUp className="h-5 w-5" />
+                  <span className="text-sm font-medium">Income</span>
+                </div>
+                <p className="mt-3 text-2xl font-semibold tabular-nums text-foreground">
+                  +${(monthlyStats?.income ?? 0).toLocaleString("en-US")}
+                </p>
+              </div>
+
+              <div className="card-luxe flex flex-col p-5">
+                <div className="flex items-center gap-2 text-expense">
+                  <TrendingDown className="h-5 w-5" />
+                  <span className="text-sm font-medium">Spent</span>
+                </div>
+                <p className="mt-3 text-2xl font-semibold tabular-nums text-foreground">
+                  -${(monthlyStats?.spent ?? 0).toLocaleString("en-US")}
+                </p>
+              </div>
+            </div>
 
             {/* Budget Categories */}
             <section className="flex flex-col gap-4">

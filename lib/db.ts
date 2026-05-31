@@ -42,6 +42,7 @@ export interface Budget {
 export interface Preset {
   id?: number
   name: string
+  order?: number
 }
 
 export const db = new Dexie("CashTracker") as Dexie & {
@@ -52,12 +53,12 @@ export const db = new Dexie("CashTracker") as Dexie & {
   accounts: EntityTable<Account, "id">     // ← NEW table
 }
 
-db.version(47).stores({                       // ← bumped from 46 to 47
+db.version(48).stores({                       // ← bumped from 47 to 48 (presets.order)
   transactions: "++id, date, amount, category, type, synced, merchant, accountId",
   receipts: "++id, createdAt, processed",
   budgets: "++id, month, category",
-  presets: "++id, name",
-  accounts: "++id, name, owner, type"        // ← NEW store
+  presets: "++id, name, order",
+  accounts: "++id, name, owner, type"
 })
 
 // Rest of your helper functions stay exactly the same
@@ -83,12 +84,76 @@ export const addPresetIfNew = async (name: string) => {
   const trimmed = name.trim()
   const existing = await db.presets.where('name').equalsIgnoreCase(trimmed).first()
   if (!existing) {
-    await db.presets.add({ name: trimmed })
+    const all = await db.presets.toArray()
+    const maxOrder = all.reduce((m, p) => Math.max(m, p.order ?? -1), -1)
+    await db.presets.add({ name: trimmed, order: maxOrder + 1 })
   }
 }
 
 export const getAllPresets = async () => {
   return await db.presets.orderBy('name').toArray()
+}
+
+// Presets ordered by their saved `order` (JS sort avoids Dexie index gaps for
+// records created before the order field existed).
+export const getOrderedPresets = async (): Promise<Preset[]> => {
+  const all = await db.presets.toArray()
+  return all.sort(
+    (a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER),
+  )
+}
+
+// Idempotent: makes sure the default categories exist as presets and that every
+// preset has a stable `order`. Safe to call on every mount.
+export const seedDefaultPresets = async (defaults: string[]) => {
+  for (const name of defaults) {
+    const existing = await db.presets.where('name').equalsIgnoreCase(name).first()
+    if (!existing) {
+      await db.presets.add({ name })
+    }
+  }
+
+  const all = await db.presets.toArray()
+  if (all.every((p) => p.order !== undefined)) return // already ordered, nothing to do
+
+  const lower = (s: string) => s.toLowerCase()
+  const defaultIndex = (name: string) => {
+    const i = defaults.findIndex((d) => lower(d) === lower(name))
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i
+  }
+  const sorted = [...all].sort((a, b) => {
+    const da = defaultIndex(a.name)
+    const dbi = defaultIndex(b.name)
+    if (da !== dbi) return da - dbi
+    return a.name.localeCompare(b.name)
+  })
+  await db.transaction('rw', db.presets, async () => {
+    await Promise.all(sorted.map((p, idx) => db.presets.update(p.id!, { order: idx })))
+  })
+}
+
+export const renamePreset = async (
+  id: number,
+  newName: string,
+): Promise<{ ok: true } | { ok: false; reason: "empty" | "duplicate" }> => {
+  const trimmed = newName.trim()
+  if (!trimmed) return { ok: false, reason: "empty" }
+  const clash = await db.presets.where('name').equalsIgnoreCase(trimmed).first()
+  if (clash && clash.id !== id) return { ok: false, reason: "duplicate" }
+  await db.presets.update(id, { name: trimmed })
+  return { ok: true }
+}
+
+export const deletePreset = async (id: number) => {
+  await db.presets.delete(id)
+}
+
+// Persist a new ordering. `orderedIds` is the full list of preset ids in their
+// desired display order. Uses bulkUpdate so existing names are preserved.
+export const reorderPresets = async (orderedIds: number[]) => {
+  await db.transaction('rw', db.presets, async () => {
+    await Promise.all(orderedIds.map((id, idx) => db.presets.update(id, { order: idx })))
+  })
 }
 
 export const saveDraft = async (draft: Partial<Transaction>) => {
