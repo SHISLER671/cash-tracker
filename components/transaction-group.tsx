@@ -15,11 +15,11 @@ export function TransactionGroup({ label, transactions, onEdit, possibleDuplicat
   if (transactions.length === 0) return null
   
   return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider px-1">
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">
         {label}
       </h3>
-      <div className="space-y-2">
+      <div className="space-y-3">
         {transactions.map((transaction) => {
           const dup = possibleDuplicates?.find(d => d.local?.id === transaction.id)
           return (

@@ -18,7 +18,7 @@ export function TransactionItem({ transaction, onEdit, isDuplicate, onFlagClick 
     <div
       onClick={() => onEdit?.(transaction)}
       className={cn(
-        "flex items-center gap-4 p-4 bg-card rounded-xl shadow-earth active:bg-secondary transition-colors cursor-pointer relative",
+        "card-luxe flex items-center gap-4 p-5 active:scale-[0.985] transition-all cursor-pointer relative",
         isDuplicate && "ring-2 ring-amber-400"
       )}
     >
@@ -29,23 +29,23 @@ export function TransactionItem({ transaction, onEdit, isDuplicate, onFlagClick 
             e.stopPropagation()
             onFlagClick()
           }}
-          className="absolute left-4 top-4 text-red-500 hover:text-red-600 transition-colors"
+          className="absolute left-4 top-4 text-destructive hover:brightness-90 transition-all"
         >
-          <Flag className="h-6 w-6 fill-red-500" />
+          <Flag className="h-6 w-6 fill-current" />
         </button>
       )}
 
       {/* Category Icon */}
       <div className={cn(
-        "flex items-center justify-center w-12 h-12 rounded-full text-sm font-bold flex-shrink-0",
-        isIncome ? "bg-income/20 text-income" : "bg-secondary text-muted-foreground"
+        "flex items-center justify-center w-14 h-14 rounded-2xl text-lg font-bold flex-shrink-0",
+        isIncome ? "bg-income/15 text-income" : "bg-expense/15 text-expense"
       )}>
         {categoryIcons[transaction.category] || "📦"}
       </div>
 
       {/* Details */}
-      <div className="flex-1 min-w-0 pl-8"> {/* extra padding for flag */}
-        <p className="text-foreground font-medium">
+      <div className={cn("flex-1 min-w-0", isDuplicate && "pl-8")}>
+        <p className="text-foreground font-semibold text-lg truncate">
           {categoryLabels[transaction.category] || transaction.category}
         </p>
         {transaction.merchant && (
@@ -58,7 +58,7 @@ export function TransactionItem({ transaction, onEdit, isDuplicate, onFlagClick 
 
       {/* Amount */}
       <div className={cn(
-        "text-lg font-bold tabular-nums",
+        "text-2xl font-semibold tabular-nums",
         isIncome ? "text-income" : "text-expense"
       )}>
         {isIncome ? "+" : "-"}${transaction.amount.toFixed(2)}
