@@ -1,51 +1,78 @@
 "use client"
 
+import { useLiveQuery } from "dexie-react-hooks"
+import { Fuel, UtensilsCrossed, Pill, ShoppingCart, Package, Plus, Tag, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-type Category = "gas" | "food" | "medical" | "other"
+import { db, getAllPresets, addPresetIfNew } from "@/lib/db"
 
 interface CategoryButtonsProps {
-  value: Category | null
-  onChange: (value: Category) => void
+  value: string | null
+  onChange: (value: string) => void
 }
 
-const categories: { id: Category; label: string; icon: string }[] = [
-  { id: "gas", label: "GAS", icon: "⛽" },
-  { id: "food", label: "FOOD", icon: "🍔" },
-  { id: "medical", label: "MEDICAL", icon: "💊" },
-  { id: "other", label: "OTHER", icon: "📦" },
-]
+// Default categories that always appear first, with matching icons
+const DEFAULT_CATEGORIES = ["gas", "food", "medical", "groceries", "other"]
+
+const ICONS: Record<string, LucideIcon> = {
+  gas: Fuel,
+  food: UtensilsCrossed,
+  medical: Pill,
+  groceries: ShoppingCart,
+  other: Package,
+}
+
+function iconFor(name: string): LucideIcon {
+  return ICONS[name.toLowerCase()] ?? Tag
+}
 
 export function CategoryButtons({ value, onChange }: CategoryButtonsProps) {
+  // Live list of saved presets from Dexie, merged with the defaults
+  const presets = useLiveQuery(() => getAllPresets(), [])
+
+  const presetNames = (presets ?? []).map((p) => p.name.toLowerCase())
+  const categories = [
+    ...DEFAULT_CATEGORIES,
+    ...presetNames.filter((name) => !DEFAULT_CATEGORIES.includes(name)),
+  ]
+
+  const handleAddCategory = async () => {
+    const name = window.prompt("New category name?")?.trim()
+    if (!name) return
+    await addPresetIfNew(name)
+    onChange(name.toLowerCase())
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3 w-full max-w-sm mx-auto">
-      {categories.map((category) => (
-        <button
-          key={category.id}
-          type="button"
-          onClick={() => onChange(category.id)}
-          className={cn(
-            "flex flex-col items-center justify-center gap-2 p-5 rounded-2xl transition-all duration-200 active:scale-95",
-            value === category.id
-              ? "bg-zinc-700 ring-2 ring-emerald-500 shadow-lg"
-              : "bg-zinc-800 hover:bg-zinc-700"
-          )}
-        >
-          <span className="text-4xl" role="img" aria-label={category.label}>
-            {category.icon}
-          </span>
-          <span
+    <div className="grid grid-cols-3 gap-3 w-full max-w-md mx-auto sm:grid-cols-4">
+      {categories.map((category) => {
+        const Icon = iconFor(category)
+        const isSelected = value?.toLowerCase() === category
+        return (
+          <button
+            key={category}
+            type="button"
+            onClick={() => onChange(category)}
             className={cn(
-              "text-sm font-bold tracking-wide",
-              value === category.id ? "text-emerald-400" : "text-zinc-300"
+              "flex flex-col items-center justify-center gap-2 p-4 rounded-2xl transition-all duration-200 active:scale-95",
+              isSelected
+                ? "bg-primary text-primary-foreground shadow-earth ring-2 ring-primary"
+                : "bg-card text-foreground hover:bg-secondary",
             )}
           >
-            {category.label}
-          </span>
-        </button>
-      ))}
+            <Icon className="h-7 w-7" />
+            <span className="text-xs font-bold uppercase tracking-wide">{category}</span>
+          </button>
+        )
+      })}
+
+      <button
+        type="button"
+        onClick={handleAddCategory}
+        className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border border-dashed border-muted-foreground/40 text-muted-foreground transition-all duration-200 hover:bg-secondary active:scale-95"
+      >
+        <Plus className="h-7 w-7" />
+        <span className="text-xs font-bold uppercase tracking-wide">New</span>
+      </button>
     </div>
   )
 }
-
-export type { Category }

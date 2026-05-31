@@ -116,15 +116,17 @@ export function CameraViewfinder({ onCapture, isProcessing }: CameraViewfinderPr
 
       <canvas ref={canvasRef} className="hidden" />
 
-      {/* Capture button */}
-      <div className="absolute bottom-8 left-0 right-0 flex justify-center">
+      {/* Capture button - raised above the bottom action bar to avoid overlap */}
+      <div className="absolute bottom-32 left-0 right-0 flex justify-center pointer-events-none">
         <button
           onClick={handleCapture}
           disabled={isProcessing}
-          className="w-20 h-20 rounded-full bg-red-600 border-4 border-white shadow-lg flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+          className="pointer-events-auto h-24 w-24 rounded-full bg-amber-400 p-1.5 shadow-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
           aria-label="Capture receipt"
         >
-          <div className="w-14 h-14 rounded-full bg-red-600 border-2 border-red-400" />
+          <span className="flex h-full w-full items-center justify-center rounded-full border-4 border-amber-200 bg-red-600">
+            <span className="h-14 w-14 rounded-full bg-red-500 ring-2 ring-red-300" />
+          </span>
         </button>
       </div>
     </div>

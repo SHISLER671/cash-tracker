@@ -1,9 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import { db, type Transaction } from '@/lib/db'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-export const supabase = createClient(supabaseUrl, supabaseKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+// Only create the client when both env vars exist. This prevents the entire
+// app from crashing at import time if the keys are missing or not yet injected.
+export const supabase =
+  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null
+
+if (!supabase) {
+  console.warn("Supabase env vars missing — sync features are disabled.")
+}
 
 // Push new transactions to Supabase (with account ownership)
 export async function pushToPartner(transactions: Transaction[]) {
