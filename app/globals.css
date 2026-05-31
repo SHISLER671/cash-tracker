@@ -3,22 +3,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Earth Tone Professional Theme */
+/* Warm Earth Luxe Theme */
 :root {
-  /* Core backgrounds */
-  --background: #F5F1E8;
+  /* Core backgrounds (soft warm beige) */
+  --background: #F8F5EE;
   --foreground: #2C241B;
-  --card: #EDE8E0;
+  --card: #F5F0E6;
   --card-foreground: #2C241B;
-  --popover: #EDE8E0;
+  --popover: #F5F0E6;
   --popover-foreground: #2C241B;
   
-  /* Primary (warm sand button) */
+  /* Primary (warm gold button) */
   --primary: #C4A77D;
   --primary-foreground: #2C241B;
   
   /* Secondary (muted) */
-  --secondary: #D4CFC6;
+  --secondary: #EDE4D4;
   --secondary-foreground: #2C241B;
   
   /* Muted */
@@ -31,7 +31,16 @@
   
   /* Destructive (terracotta) */
   --destructive: #B85450;
-  --destructive-foreground: #F5F1E8;
+  --destructive-foreground: #FFFFFF;
+
+  /* Success (forest green) */
+  --success: #5B8C5A;
+  --success-foreground: #FFFFFF;
+
+  /* Extra luxe accents */
+  --gold-light: #D4B98A;
+  --gold-dark: #A17D4F;
+  --border-luxe: #E8D9C2;
   
   /* Borders and inputs */
   --border: #D4C5B5;
@@ -69,22 +78,27 @@
 
 /* Dark variant kept for potential future use */
 .dark {
-  --background: #F5F1E8;
+  --background: #F8F5EE;
   --foreground: #2C241B;
-  --card: #EDE8E0;
+  --card: #F5F0E6;
   --card-foreground: #2C241B;
-  --popover: #EDE8E0;
+  --popover: #F5F0E6;
   --popover-foreground: #2C241B;
   --primary: #C4A77D;
   --primary-foreground: #2C241B;
-  --secondary: #D4CFC6;
+  --secondary: #EDE4D4;
   --secondary-foreground: #2C241B;
   --muted: #E0DCD4;
   --muted-foreground: #6B5B4F;
   --accent: #D4CFC6;
   --accent-foreground: #2C241B;
   --destructive: #B85450;
-  --destructive-foreground: #F5F1E8;
+  --destructive-foreground: #FFFFFF;
+  --success: #5B8C5A;
+  --success-foreground: #FFFFFF;
+  --gold-light: #D4B98A;
+  --gold-dark: #A17D4F;
+  --border-luxe: #E8D9C2;
   --border: #D4C5B5;
   --input: #EDE8E0;
   --ring: #C4A77D;
@@ -127,6 +141,11 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-gold-light: var(--gold-light);
+  --color-gold-dark: var(--gold-dark);
+  --color-border-luxe: var(--border-luxe);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -198,4 +217,70 @@
   .shadow-earth-lg {
     box-shadow: 0 4px 16px rgba(44, 36, 27, 0.12);
   }
+
+  /* === Warm Earth Luxe helpers (all opt-in) === */
+
+  /* Subtle premium depth */
+  .shadow-luxe {
+    box-shadow:
+      0 10px 25px -5px rgba(44, 36, 27, 0.12),
+      0 4px 8px -2px rgba(44, 36, 27, 0.08);
+  }
+
+  /* Premium card */
+  .card-luxe {
+    background-color: var(--card);
+    border: 1px solid var(--border-luxe);
+    border-radius: 1.5rem;
+    box-shadow:
+      0 10px 25px -5px rgba(44, 36, 27, 0.12),
+      0 4px 8px -2px rgba(44, 36, 27, 0.08);
+  }
+
+  /* Big chunky luxe button (opt-in only - does NOT affect existing buttons) */
+  .btn-luxe {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    min-height: 72px;
+    padding: 1.25rem 2rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    border-radius: 1.5rem;
+    box-shadow:
+      0 10px 25px -5px rgba(44, 36, 27, 0.12),
+      0 4px 8px -2px rgba(44, 36, 27, 0.08);
+    transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .btn-luxe:hover {
+    filter: brightness(1.05);
+  }
+  .btn-luxe:active {
+    filter: brightness(0.95);
+    transform: scale(0.965);
+  }
+
+  /* Gold gradient variant */
+  .btn-gold {
+    border: 1px solid var(--gold-light);
+    background-image: linear-gradient(to bottom, var(--primary), #B89A6F);
+    color: var(--primary-foreground);
+  }
+
+  /* Luxe sticky header */
+  .header-luxe {
+    background-image: linear-gradient(to bottom, var(--background), rgba(245, 240, 230, 0.8));
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-luxe);
+  }
+}
+
+/* Smooth color/shadow transitions globally (cosmetic only, no layout impact) */
+*,
+::before,
+::after {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
 }
