@@ -124,10 +124,10 @@ export default function Home() {
 
             {/* Budget Categories */}
             <section className="flex flex-col gap-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <h2 className="px-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Monthly Budgets
               </h2>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-4">
                 {budgets.map((budget) => (
                   <BudgetProgress
                     key={budget.label}
