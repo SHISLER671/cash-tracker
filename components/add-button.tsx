@@ -39,18 +39,18 @@ export function AddButton() {
             </div>
 
             <div className="px-6 pb-6">
-              <h2 className="text-center text-lg font-semibold text-foreground mb-6">Add New Receipt</h2>
+              <h2 className="text-center text-2xl font-semibold text-foreground mb-8">Add New Entry</h2>
 
               {/* Option 1: Take Photo */}
               <button
                 onClick={() => handleOption("/capture")}
-                className="w-full flex items-center gap-4 mb-4 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.98] transition-all text-left"
+                className="w-full flex items-center gap-5 mb-4 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.985] transition-all text-left"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/20 text-gold-dark">
-                  <Camera className="h-6 w-6" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/20 text-gold-dark">
+                  <Camera className="h-8 w-8" />
                 </div>
                 <div className="flex-1">
-                  <div className="font-semibold text-lg">Take New Photo</div>
+                  <div className="font-semibold text-xl">Take New Photo</div>
                   <div className="text-sm text-muted-foreground">Live camera - instant scan</div>
                 </div>
               </button>
@@ -58,13 +58,13 @@ export function AddButton() {
               {/* Option 2: Upload Saved Photo */}
               <button
                 onClick={() => handleOption("/capture?mode=upload")}
-                className="w-full flex items-center gap-4 mb-4 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.98] transition-all text-left"
+                className="w-full flex items-center gap-5 mb-4 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.985] transition-all text-left"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-success/15 text-success">
-                  <Upload className="h-6 w-6" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-success/15 text-success">
+                  <Upload className="h-8 w-8" />
                 </div>
                 <div className="flex-1">
-                  <div className="font-semibold text-lg">Upload Saved Photo</div>
+                  <div className="font-semibold text-xl">Upload Saved Photo</div>
                   <div className="text-sm text-muted-foreground">Pick from your camera roll</div>
                 </div>
               </button>
@@ -72,13 +72,13 @@ export function AddButton() {
               {/* Option 3: Manual Entry */}
               <button
                 onClick={() => handleOption("/transaction")}
-                className="w-full flex items-center gap-4 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.98] transition-all text-left"
+                className="w-full flex items-center gap-5 p-5 rounded-3xl bg-card border border-border-luxe hover:bg-secondary active:scale-[0.985] transition-all text-left"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/15 text-destructive">
-                  <Edit3 className="h-6 w-6" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/15 text-destructive">
+                  <Edit3 className="h-8 w-8" />
                 </div>
                 <div className="flex-1">
-                  <div className="font-semibold text-lg">Type It In</div>
+                  <div className="font-semibold text-xl">Type It In</div>
                   <div className="text-sm text-muted-foreground">No photo needed</div>
                 </div>
               </button>
