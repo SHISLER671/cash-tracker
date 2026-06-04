@@ -1,13 +1,48 @@
 "use client"
 
-import { useState, useEffect, Suspense } from "react"
+import { useState, useEffect, useMemo, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, AlertTriangle, Trash2 } from "lucide-react"
 import { db, type Transaction } from "@/lib/db"
 import EditTransactionModal from "@/components/EditTransactionModal"
 import { TransactionList } from "@/components/transaction-list"
 import { autoPullIfNeeded } from "@/lib/supabase/sync"
+
+const DISMISSED_KEY = "dismissedDuplicates"
+
+// A duplicate "signature": two transactions that share the same calendar day,
+// amount, category, type and merchant are almost certainly the same expense
+// entered (or synced) twice. Merchant is included to keep this conservative so
+// genuinely-distinct same-day, same-amount purchases aren't falsely flagged.
+function dupKey(t: { date: Date; amount: number; category: string; type: string; merchant?: string }) {
+  const day = new Date(t.date).toISOString().split("T")[0]
+  const merchant = (t.merchant || "").trim().toLowerCase()
+  return `${day}|${Number(t.amount).toFixed(2)}|${String(t.category).toLowerCase()}|${t.type}|${merchant}`
+}
+
+type DuplicateGroup = { key: string; reason: string; items: Transaction[] }
+
+function findDuplicateGroups(transactions: Transaction[], dismissed: Set<string>): DuplicateGroup[] {
+  const byKey = new Map<string, Transaction[]>()
+  for (const t of transactions) {
+    const k = dupKey(t)
+    if (!byKey.has(k)) byKey.set(k, [])
+    byKey.get(k)!.push(t)
+  }
+
+  const groups: DuplicateGroup[] = []
+  for (const [key, items] of byKey) {
+    if (items.length >= 2 && !dismissed.has(key)) {
+      groups.push({
+        key,
+        items,
+        reason: `${items.length} entries share the same date, amount, and category`,
+      })
+    }
+  }
+  return groups
+}
 
 function HistoryPageSkeleton() {
   return <div className="min-h-screen bg-background flex items-center justify-center">Loading history...</div>
@@ -16,24 +51,19 @@ function HistoryPageSkeleton() {
 function HistoryPageContent() {
   const router = useRouter()
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
-  const [possibleDuplicates, setPossibleDuplicates] = useState<any[]>([])
-  const [showReviewModal, setShowReviewModal] = useState(false)
-  const [selectedGroup, setSelectedGroup] = useState<any>(null)
+  const [dismissedKeys, setDismissedKeys] = useState<string[]>([])
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   useEffect(() => {
     autoPullIfNeeded()
 
-    const stored = localStorage.getItem("possibleDuplicates")
+    const stored = localStorage.getItem(DISMISSED_KEY)
     if (stored) {
       try {
-        const parsed = JSON.parse(stored)
-        const fixed = parsed.map((d: any) => ({
-          ...d,
-          local: d.local ? { ...d.local, date: new Date(d.local.date) } : null,
-          remote: d.remote ? { ...d.remote, date: new Date(d.remote.date) } : null,
-        }))
-        setPossibleDuplicates(fixed)
-      } catch (e) {}
+        setDismissedKeys(JSON.parse(stored))
+      } catch {
+        // ignore corrupt value
+      }
     }
   }, [])
 
@@ -42,123 +72,146 @@ function HistoryPageContent() {
     return all.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [])
 
-  const transactions: Transaction[] = (dbTransactions ?? []).map((t: any) => ({
-    id: t.id,
-    date: new Date(t.date),
-    amount: t.amount,
-    merchant: t.merchant || "",
-    category: t.category,
-    type: t.type,
-    note: t.note,
-  }))
+  // Stable mapped list (only recomputes when the underlying rows change).
+  const transactions: Transaction[] = useMemo(
+    () =>
+      (dbTransactions ?? []).map((t: any) => ({
+        id: t.id,
+        date: new Date(t.date),
+        amount: t.amount,
+        merchant: t.merchant || "",
+        category: t.category,
+        type: t.type,
+        note: t.note,
+      })),
+    [dbTransactions],
+  )
 
-  const openDuplicateModal = (group: any) => {
-    setSelectedGroup(group)
-    setShowReviewModal(true)
+  const dismissedSet = useMemo(() => new Set(dismissedKeys), [dismissedKeys])
+  const duplicateGroups = useMemo(
+    () => findDuplicateGroups(transactions, dismissedSet),
+    [transactions, dismissedSet],
+  )
+
+  // One flag entry per duplicated transaction, in the shape the list plumbing
+  // already understands ({ local: { id } }). The full group rides along so the
+  // review modal can show every copy.
+  const flagged = useMemo(() => {
+    const arr: { local: { id?: number }; group: DuplicateGroup }[] = []
+    for (const group of duplicateGroups) {
+      for (const item of group.items) {
+        arr.push({ local: { id: item.id }, group })
+      }
+    }
+    return arr
+  }, [duplicateGroups])
+
+  // The active group is always read live from duplicateGroups, so deleting the
+  // last extra (or dismissing) makes the modal close automatically.
+  const activeGroup = selectedKey ? duplicateGroups.find((g) => g.key === selectedKey) ?? null : null
+
+  const openDuplicateModal = (dup: { group: DuplicateGroup }) => setSelectedKey(dup.group.key)
+  const closeModal = () => setSelectedKey(null)
+
+  const handleDeleteItem = async (item: Transaction) => {
+    if (item.id != null) await db.transactions.delete(item.id)
+    // duplicateGroups recomputes from the live query; modal auto-closes if the
+    // group drops below 2 remaining entries.
   }
 
-  const closeModal = () => {
-    setShowReviewModal(false)
-    setSelectedGroup(null)
-  }
-
-  const handleDeleteFromGroup = async (dup: any) => {
-    if (dup.local?.id) await db.transactions.delete(dup.local.id)
-    const remaining = possibleDuplicates.filter(d => d !== dup)
-    setPossibleDuplicates(remaining)
-    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
-  }
-
-  const handleKeepBoth = () => {
-    const remaining = possibleDuplicates.filter(d => d !== selectedGroup)
-    setPossibleDuplicates(remaining)
-    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
-    closeModal()
-  }
-
-  const handleSaveAndClose = () => {
-    closeModal()
-    window.location.reload() // refresh + sync
+  const handleDismissGroup = () => {
+    if (!selectedKey) return
+    const next = Array.from(new Set([...dismissedKeys, selectedKey]))
+    setDismissedKeys(next)
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify(next))
+    setSelectedKey(null)
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="flex items-center justify-between p-4 border-b">
-        <button onClick={() => router.back()} className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth">
+      <header className="flex items-center justify-between p-4 border-b border-border">
+        <button
+          onClick={() => router.back()}
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-card text-muted-foreground shadow-earth"
+          aria-label="Go back"
+        >
           <ArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="text-xl font-bold">History</h1>
         <div className="w-11" />
       </header>
 
+      {/* Duplicate summary banner — only shows when there are flags to review */}
+      {duplicateGroups.length > 0 && (
+        <div className="mx-4 mt-4 flex items-center gap-3 rounded-2xl bg-amber-50 p-4 text-amber-900 ring-1 ring-amber-200">
+          <AlertTriangle className="h-5 w-5 flex-shrink-0 text-amber-600" />
+          <p className="text-sm font-medium">
+            {duplicateGroups.length} possible duplicate{duplicateGroups.length === 1 ? "" : " groups"} found — tap a
+            flagged entry to review.
+          </p>
+        </div>
+      )}
+
       <div className="p-4">
-        <TransactionList 
-          transactions={transactions} 
+        <TransactionList
+          transactions={transactions}
           onEdit={setEditingTransaction}
-          possibleDuplicates={possibleDuplicates}
+          possibleDuplicates={flagged}
           onFlagClick={openDuplicateModal}
         />
       </div>
 
-      {/* Improved Duplicate Review Modal */}
-      {showReviewModal && selectedGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md bg-white rounded-3xl shadow-earth-lg max-h-[90vh] overflow-auto">
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-bold">Possible Duplicate</h2>
-              <p className="text-sm text-muted-foreground mt-1">{selectedGroup.reason}</p>
+      {/* Duplicate review modal — lists every copy in the group */}
+      {activeGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4">
+          <div className="w-full max-w-md bg-background rounded-3xl shadow-earth-lg max-h-[90vh] overflow-auto">
+            <div className="p-6 border-b border-border">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <h2 className="text-xl font-bold">Possible Duplicate</h2>
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">{activeGroup.reason}</p>
             </div>
 
-            <div className="p-6 space-y-8">
-              {/* Local Entry */}
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-2">LOCAL ENTRY</p>
-                <div className="bg-card p-4 rounded-2xl">
-                  <p className="font-medium">${selectedGroup.local?.amount} • {selectedGroup.local?.merchant || "Unknown"}</p>
-                  <p className="text-sm text-muted-foreground">{selectedGroup.local?.category} • {selectedGroup.local?.date?.toLocaleDateString() || "—"}</p>
+            <div className="p-6 space-y-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {activeGroup.items.length} matching entries
+              </p>
+              {activeGroup.items.map((item) => (
+                <div key={item.id} className="flex items-center gap-3 bg-card p-4 rounded-2xl">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold">
+                      {item.type === "in" ? "+" : "-"}${Number(item.amount).toFixed(2)} • {item.merchant || "Unknown"}
+                    </p>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {item.category} • {new Date(item.date).toLocaleDateString()}
+                      {item.note ? ` • ${item.note}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteItem(item)}
+                    className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive active:scale-95 transition-transform"
+                    aria-label="Delete this entry"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleDeleteFromGroup(selectedGroup)}
-                  className="mt-3 w-full py-3 text-red-600 bg-red-50 rounded-2xl font-medium"
-                >
-                  Delete this version
-                </button>
-              </div>
-
-              {/* Partner Entry */}
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-2">FROM PARTNER</p>
-                <div className="bg-card p-4 rounded-2xl">
-                  <p className="font-medium">${selectedGroup.remote?.amount} • {selectedGroup.remote?.merchant || "Unknown"}</p>
-                  <p className="text-sm text-muted-foreground">{selectedGroup.remote?.category} • {selectedGroup.remote?.date ? new Date(selectedGroup.remote.date).toLocaleDateString() : "—"}</p>
-                </div>
-                <button
-                  onClick={() => {
-                    const remaining = possibleDuplicates.filter(d => d !== selectedGroup)
-                    setPossibleDuplicates(remaining)
-                    localStorage.setItem("possibleDuplicates", JSON.stringify(remaining))
-                    closeModal()
-                  }}
-                  className="mt-3 w-full py-3 bg-amber-600 text-white rounded-2xl font-medium"
-                >
-                  Delete this version (keep local)
-                </button>
-              </div>
+              ))}
             </div>
 
-            {/* Global actions - Keep Both is now very visible */}
-            <div className="p-4 border-t flex flex-col gap-3">
+            <div className="p-4 border-t border-border flex flex-col gap-3">
               <button
-                onClick={handleKeepBoth}
-                className="w-full py-4 bg-emerald-100 text-emerald-700 font-semibold rounded-2xl active:scale-95"
+                onClick={handleDismissGroup}
+                className="w-full py-4 bg-secondary text-foreground font-semibold rounded-2xl active:scale-95 transition-transform"
               >
-                Keep Both Entries (remove flag)
+                These aren&apos;t duplicates — keep all
               </button>
-
-              <div className="flex gap-3">
-                <button onClick={closeModal} className="flex-1 py-4 text-muted-foreground font-medium">Back</button>
-                <button onClick={handleSaveAndClose} className="flex-1 py-4 bg-black text-white font-semibold rounded-2xl">Save & Close</button>
-              </div>
+              <button
+                onClick={closeModal}
+                className="w-full py-4 bg-primary text-primary-foreground font-semibold rounded-2xl active:scale-95 transition-transform"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>
