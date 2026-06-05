@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft, Lock, Trash2, Upload, Download, Users, RefreshCw } from "lucide-react"
 import Link from "next/link"
-import { db, type Account } from "@/lib/db"
+import { db, softDeleteTransactionsWhere, type Account } from "@/lib/db"
 import { format, formatDistanceToNow } from "date-fns"
-import { getSyncStatus, pushToPartner, pullFromPartner, clearLocalDataAndResync, type SyncStatus } from "@/lib/supabase/sync"
+import { getSyncStatus, syncNow, pullFromPartner, clearLocalDataAndResync, type SyncStatus } from "@/lib/supabase/sync"
 
 const defaultBudgets = {
   gas: 150,
@@ -97,7 +97,9 @@ export default function SettingsPage() {
   const handleClearOldReceipts = async () => {
     const ninetyDaysAgo = new Date()
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
-    await db.transactions.where("date").below(ninetyDaysAgo).delete()
+    // Soft-delete so these removals also propagate to Supabase/other devices.
+    await softDeleteTransactionsWhere((t) => new Date(t.date) < ninetyDaysAgo)
+    void syncNow()
   }
 
   // Full Resync — clears local synced data (transactions + receipts), resets the
@@ -133,16 +135,15 @@ export default function SettingsPage() {
       const allTx = await db.transactions.toArray()
       const unsynced = allTx.filter(t => t.synced === false && Boolean(t.id))
 
-      console.log("✅ Found unsynced transactions:", unsynced.length, unsynced)
-
-      if (unsynced.length === 0) {
-        setSyncMessage("Nothing new to share")
-        setTimeout(() => setSyncMessage(null), 2500)
-        return
-      }
-
-      await pushToPartner(unsynced)
-      setSyncMessage(`Shared ${unsynced.length} transaction${unsynced.length > 1 ? 's' : ''}`)
+      // Full reconcile: force-upserts every local row (heals rows wrongly
+      // marked synced that never reached the server) + pending deletions, then
+      // does a full pull so this device ends up fully consistent with Supabase.
+      await syncNow({ force: true, full: true })
+      setSyncMessage(
+        unsynced.length > 0
+          ? `Shared ${unsynced.length} transaction${unsynced.length > 1 ? "s" : ""}`
+          : "Everything is up to date",
+      )
     } catch (e) {
       console.error("Push error:", e)
       setSyncMessage("Push failed - check console")
