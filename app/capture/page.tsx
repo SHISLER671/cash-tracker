@@ -8,6 +8,7 @@ import { CameraViewfinder } from "@/components/camera-viewfinder"
 import { ProcessingOverlay } from "@/components/processing-overlay"
 import { scanReceipt } from "@/lib/ocr"
 import { db, addReceiptToInbox } from "@/lib/db"
+import { syncNow } from "@/lib/supabase/sync"
 
 type CaptureState = "camera" | "processing" | "results" | "error" | "bulk-categorize"
 type Category = "gas" | "food" | "medical" | "other"
@@ -125,10 +126,13 @@ function CapturePageContent() {
           type: "out",
           amount: receipt.amount,
           note: "Receipt scan",
+          synced: false,
         })
       }
     }
     setIsSaving(false)
+    // Push the newly captured transactions to Supabase / other devices.
+    void syncNow()
     router.push("/")
   }
 

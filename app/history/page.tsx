@@ -4,10 +4,10 @@ import { useState, useEffect, useMemo, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft, AlertTriangle, Trash2 } from "lucide-react"
-import { db, type Transaction } from "@/lib/db"
+import { db, softDeleteTransaction, type Transaction } from "@/lib/db"
 import EditTransactionModal from "@/components/EditTransactionModal"
 import { TransactionList } from "@/components/transaction-list"
-import { autoPullIfNeeded } from "@/lib/supabase/sync"
+import { syncNow } from "@/lib/supabase/sync"
 
 const DISMISSED_KEY = "dismissedDuplicates"
 
@@ -55,7 +55,7 @@ function HistoryPageContent() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   useEffect(() => {
-    autoPullIfNeeded()
+    syncNow()
 
     const stored = localStorage.getItem(DISMISSED_KEY)
     if (stored) {
@@ -114,9 +114,14 @@ function HistoryPageContent() {
   const closeModal = () => setSelectedKey(null)
 
   const handleDeleteItem = async (item: Transaction) => {
-    if (item.id != null) await db.transactions.delete(item.id)
-    // duplicateGroups recomputes from the live query; modal auto-closes if the
-    // group drops below 2 remaining entries.
+    if (item.id != null) {
+      // Soft-delete so the removal of this duplicate propagates to Supabase and
+      // other devices (a tombstone is recorded), instead of re-appearing on the
+      // next pull. duplicateGroups recomputes from the live query; the modal
+      // auto-closes once the group drops below 2 remaining entries.
+      await softDeleteTransaction(item.id)
+      void syncNow()
+    }
   }
 
   const handleDismissGroup = () => {

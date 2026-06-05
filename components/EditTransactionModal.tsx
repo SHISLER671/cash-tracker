@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { db, type Transaction, addPresetIfNew, getAllPresets } from "@/lib/db"
-import { supabase } from "@/lib/supabase/client"
+import { db, type Transaction, addPresetIfNew, getAllPresets, softDeleteTransaction } from "@/lib/db"
+import { syncNow } from "@/lib/supabase/sync"
 import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
 
@@ -39,6 +39,11 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
   const handleSave = async () => {
     if (!form.amount || !form.merchant?.trim()) return
 
+    // Mark unsynced so the change is pushed. We update the LOCAL row in place
+    // (keeping its uid) and let syncNow() do an idempotent uid-keyed upsert to
+    // Supabase. The old code did a blind insert here with a brand-new uuid on
+    // every save, which spawned a duplicate remote row each time — the root
+    // cause of the runaway duplicates.
     const updated: Transaction = { ...form, synced: false }
 
     if (updated.id !== undefined) {
@@ -50,57 +55,35 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
     // Auto-save category as preset if new
     await addPresetIfNew(updated.category)
 
-    // Optional: push to Supabase (for new or edited items)
-    try {
-      if (supabase) {
-        await supabase.from("shared_transactions").insert({
-          date: updated.date.toISOString(),
-          amount: updated.amount,
-          merchant: updated.merchant,
-          category: updated.category,
-          type: updated.type,
-          note: updated.note || null,
-          device_id: `edit-${Date.now()}`,
-        })
-      }
-    } catch (e) {
-      console.warn("Supabase push delayed", e)
-    }
-
     toast.success("Transaction saved!")
     onSave()
     onClose()
+
+    // Push the edit + pull anything new (idempotent, uid-keyed).
+    void syncNow()
   }
 
   const handleDelete = async () => {
     if (form.id === undefined) return
 
-    // 1. Delete from local Dexie
-    await db.transactions.delete(form.id)
-
-    // 2. Delete from Supabase shared_transactions
-    try {
-      if (supabase) {
-        await supabase
-          .from("shared_transactions")
-          .delete()
-          .eq("date", form.date.toISOString())
-          .eq("amount", form.amount)
-          .eq("category", form.category)
-          .eq("type", form.type)
-      }
-    } catch (e) {
-      console.warn("Supabase delete failed (will be cleaned on next sync)", e)
-    }
+    // Soft-delete: removes the local row AND records a tombstone that syncNow()
+    // pushes to Supabase (sets deleted=true), so the deletion propagates to
+    // every device instead of the row re-appearing on the next pull.
+    await softDeleteTransaction(form.id)
+    void syncNow()
 
     toast.error("Transaction deleted", {
       description: "This can be undone for 5 seconds",
       action: {
         label: "Undo",
         onClick: async () => {
-          await db.transactions.add(form)
+          // Clear the tombstone and re-add as unsynced so syncNow() restores it
+          // remotely (the uid-keyed upsert flips deleted back to false).
+          if (form.uid) await db.tombstones.delete(form.uid)
+          await db.transactions.add({ ...form, synced: false })
           toast.success("Transaction restored")
           onSave()
+          void syncNow()
         },
       },
       duration: 5000,

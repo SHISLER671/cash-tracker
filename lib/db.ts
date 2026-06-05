@@ -82,12 +82,25 @@ export interface Preset {
   order?: number
 }
 
+// A deletion record. When a transaction is deleted we hard-remove it from the
+// `transactions` table (so every existing read query keeps working untouched)
+// but record its uid here. The tombstone is what lets the deletion PROPAGATE:
+// it is pushed to Supabase (sets shared_transactions.deleted = true) and it
+// prevents a not-yet-deleted remote copy from resurrecting the row on the next
+// pull. Keyed on uid so it survives across devices.
+export interface Tombstone {
+  uid: string          // == Supabase row id
+  deletedAt: string    // ISO timestamp
+  synced?: boolean      // has this deletion been pushed to Supabase yet?
+}
+
 export const db = new Dexie("CashTracker") as Dexie & {
   transactions: EntityTable<Transaction, "id">
   receipts: EntityTable<Receipt, "id">
   budgets: EntityTable<Budget, "id">
   presets: EntityTable<Preset, "id">
   accounts: EntityTable<Account, "id">     // ← NEW table
+  tombstones: EntityTable<Tombstone, "uid">  // ← NEW: deletion records for sync
 }
 
 db.version(48).stores({                       // ← bumped from 47 to 48 (presets.order)
@@ -124,6 +137,17 @@ db.version(49)
         if (!r.uid) r.uid = genUuid()
       })
   })
+
+// v50: add the `tombstones` table so deletions can propagate across devices and
+// Supabase instead of silently re-appearing on the next pull.
+db.version(50).stores({
+  transactions: "++id, uid, date, amount, category, type, synced, merchant, accountId",
+  receipts: "++id, uid, createdAt, processed",
+  budgets: "++id, month, category",
+  presets: "++id, name, order",
+  accounts: "++id, name, owner, type",
+  tombstones: "uid, synced, deletedAt",
+})
 
 // Centralized auto-assignment of `uid` on every insert, regardless of which
 // call site creates the record (transaction page, capture, inbox, edit modal,
@@ -245,16 +269,65 @@ export const upsertTransactionByUid = async (tx: Transaction): Promise<number> =
   return (await db.transactions.add(tx)) as number
 }
 
+// Soft-delete a transaction by its LOCAL numeric id. The row is removed from
+// the transactions table (so all reads stay clean) and a tombstone is recorded
+// so the deletion gets pushed to Supabase and never resurrects on pull. This is
+// the ONLY way transactions should be deleted — never call db.transactions.delete
+// directly, or the deletion won't sync.
+export const softDeleteTransaction = async (localId: number): Promise<void> => {
+  const t = await db.transactions.get(localId)
+  if (!t) return
+  await db.transaction("rw", db.transactions, db.tombstones, async () => {
+    await db.transactions.delete(localId)
+    if (t.uid) {
+      await db.tombstones.put({
+        uid: t.uid,
+        deletedAt: new Date().toISOString(),
+        synced: false,
+      })
+    }
+  })
+}
+
+// Soft-delete every transaction matching a predicate (used by maintenance
+// actions like "clear old data"). Each removed row gets a tombstone.
+export const softDeleteTransactionsWhere = async (
+  predicate: (t: Transaction) => boolean,
+): Promise<number> => {
+  const all = await db.transactions.toArray()
+  const victims = all.filter(predicate)
+  if (victims.length === 0) return 0
+  const nowIso = new Date().toISOString()
+  await db.transaction("rw", db.transactions, db.tombstones, async () => {
+    for (const t of victims) {
+      await db.transactions.delete(t.id!)
+      if (t.uid) await db.tombstones.put({ uid: t.uid, deletedAt: nowIso, synced: false })
+    }
+  })
+  return victims.length
+}
+
+export const getUnsyncedTombstones = async (): Promise<Tombstone[]> => {
+  const all = await db.tombstones.toArray()
+  return all.filter((t) => !t.synced)
+}
+
+export const hasTombstone = async (uid: string): Promise<boolean> => {
+  return (await db.tombstones.get(uid)) !== undefined
+}
+
 // Wipes all synced data tables and resets the sync cursor so the next pull
 // rebuilds local state from scratch. Intentionally preserves accounts, budgets
 // and presets, which are NOT mirrored in Supabase and would otherwise be lost.
 export const clearSyncedLocalData = async () => {
-  await db.transaction("rw", db.transactions, db.receipts, async () => {
+  await db.transaction("rw", db.transactions, db.receipts, db.tombstones, async () => {
     await db.transactions.clear()
     await db.receipts.clear()
+    await db.tombstones.clear()
   })
   try {
     localStorage.removeItem("syncCursor")
+    localStorage.removeItem("syncCursorV3")
     localStorage.removeItem("lastPulled")
   } catch {
     // ignore storage errors
