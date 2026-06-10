@@ -256,19 +256,6 @@ export const reorderPresets = async (orderedIds: number[]) => {
   })
 }
 
-// Idempotent insert-or-update keyed on the stable `uid`. If a local row with
-// the same uid already exists we update it in place instead of inserting a
-// duplicate. Returns the local numeric id.
-export const upsertTransactionByUid = async (tx: Transaction): Promise<number> => {
-  if (!tx.uid) tx.uid = genUuid()
-  const existing = await db.transactions.where("uid").equals(tx.uid).first()
-  if (existing) {
-    await db.transactions.update(existing.id!, { ...tx, id: existing.id })
-    return existing.id!
-  }
-  return (await db.transactions.add(tx)) as number
-}
-
 // Soft-delete a transaction by its LOCAL numeric id. The row is removed from
 // the transactions table (so all reads stay clean) and a tombstone is recorded
 // so the deletion gets pushed to Supabase and never resurrects on pull. This is
@@ -310,10 +297,6 @@ export const softDeleteTransactionsWhere = async (
 export const getUnsyncedTombstones = async (): Promise<Tombstone[]> => {
   const all = await db.tombstones.toArray()
   return all.filter((t) => !t.synced)
-}
-
-export const hasTombstone = async (uid: string): Promise<boolean> => {
-  return (await db.tombstones.get(uid)) !== undefined
 }
 
 // Wipes all synced data tables and resets the sync cursor so the next pull
