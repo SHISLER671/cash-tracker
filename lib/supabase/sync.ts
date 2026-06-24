@@ -53,6 +53,12 @@ function log(...args: unknown[]) {
 let syncInFlight: Promise<SyncResult> | null = null
 let lastSyncError: string | null = null
 
+/** Ensure category is non-empty for NOT NULL column; any string is allowed. */
+function categoryForRemote(category: string | undefined): string {
+  const trimmed = (category ?? "").trim()
+  return trimmed || "other"
+}
+
 function sameTransaction(local: Transaction, remote: SharedTransactionRow): boolean {
   const localDay = local.date.toISOString().split("T")[0]
   const remoteDay = new Date(remote.date).toISOString().split("T")[0]
@@ -86,7 +92,7 @@ export async function pushToPartner(opts: { force?: boolean } = {}): Promise<num
         date: t.date.toISOString(),
         amount: t.amount,
         merchant: t.merchant || null,
-        category: t.category,
+        category: categoryForRemote(t.category),
         type: t.type,
         note: t.note || null,
         account_id: t.accountId ?? null,

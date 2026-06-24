@@ -6,7 +6,7 @@ create table if not exists public.shared_transactions (
   date        timestamptz not null,
   amount      numeric not null,
   merchant    text,
-  category    text not null,
+  category    text not null,  -- free text; presets may be gas, groceries, etc.
   type        text not null check (type in ('in', 'out')),
   note        text,
   account_id  integer,
