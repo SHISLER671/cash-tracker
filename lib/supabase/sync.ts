@@ -7,6 +7,7 @@ import {
   type Transaction,
 } from "@/lib/db"
 import { supabase } from "./client"
+import { parseCategoryFromPull, prepareCategoryForPush } from "./category-codec"
 import type { SharedTransactionRow } from "./types"
 
 // Incremental pull cursor. Keyed on the server's `updated_at` (bumped by a DB
@@ -53,12 +54,6 @@ function log(...args: unknown[]) {
 let syncInFlight: Promise<SyncResult> | null = null
 let lastSyncError: string | null = null
 
-/** Ensure category is non-empty for NOT NULL column; any string is allowed. */
-function categoryForRemote(category: string | undefined): string {
-  const trimmed = (category ?? "").trim()
-  return trimmed || "other"
-}
-
 function sameTransaction(local: Transaction, remote: SharedTransactionRow): boolean {
   const localDay = local.date.toISOString().split("T")[0]
   const remoteDay = new Date(remote.date).toISOString().split("T")[0]
@@ -86,15 +81,17 @@ export async function pushToPartner(opts: { force?: boolean } = {}): Promise<num
       await db.transactions.update(t.id as number, { uid })
     }
 
+    const { category, note } = prepareCategoryForPush(t.category, t.note)
+
     const { error } = await supabase.from("shared_transactions").upsert(
       {
         id: uid,
         date: t.date.toISOString(),
         amount: t.amount,
         merchant: t.merchant || null,
-        category: categoryForRemote(t.category),
+        category,
         type: t.type,
-        note: t.note || null,
+        note,
         account_id: t.accountId ?? null,
         device_id: deviceId,
         deleted: false,
@@ -207,14 +204,16 @@ export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<vo
 
       if (tombstoneUids.has(remoteUid)) continue
 
+      const parsed = parseCategoryFromPull(remote.category, remote.note)
+
       const mapped: Transaction = {
         uid: remoteUid,
         date: new Date(remote.date),
         amount: Number(remote.amount),
         merchant: remote.merchant || "",
-        category: remote.category || "other",
+        category: parsed.category,
         type: remote.type,
-        note: remote.note || undefined,
+        note: parsed.note,
         synced: true,
         lastSynced: nowIso,
         deviceId: remote.device_id || undefined,
@@ -277,7 +276,11 @@ export async function syncNow(opts: { full?: boolean; force?: boolean } = {}): P
       emitSync({ type: "complete", result })
       return result
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Sync failed"
+      let message = e instanceof Error ? e.message : "Sync failed"
+      if (message.includes("shared_transactions_category_check")) {
+        message +=
+          " — run supabase/migrations/002_drop_category_check.sql in Supabase SQL Editor"
+      }
       lastSyncError = message
       console.error("[v0][sync] syncNow error:", e)
       const result: SyncResult = { ok: false, pushed: 0, deleted: 0, error: message }
