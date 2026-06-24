@@ -7,7 +7,7 @@ import { ArrowLeft, AlertTriangle, Trash2 } from "lucide-react"
 import { db, softDeleteTransaction, type Transaction } from "@/lib/db"
 import EditTransactionModal from "@/components/EditTransactionModal"
 import { TransactionList } from "@/components/transaction-list"
-import { syncNow } from "@/lib/supabase/sync"
+import { scheduleSync } from "@/lib/supabase/sync"
 
 const DISMISSED_KEY = "dismissedDuplicates"
 
@@ -55,7 +55,7 @@ function HistoryPageContent() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   useEffect(() => {
-    syncNow()
+    scheduleSync("history-mount")
 
     const stored = localStorage.getItem(DISMISSED_KEY)
     if (stored) {
@@ -120,7 +120,7 @@ function HistoryPageContent() {
       // next pull. duplicateGroups recomputes from the live query; the modal
       // auto-closes once the group drops below 2 remaining entries.
       await softDeleteTransaction(item.id)
-      void syncNow()
+      scheduleSync("history-delete")
     }
   }
 

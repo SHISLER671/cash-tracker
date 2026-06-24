@@ -7,7 +7,7 @@ import { ArrowLeft, Lock, Trash2, Upload, Download, Users, RefreshCw } from "luc
 import Link from "next/link"
 import { db, softDeleteTransactionsWhere, type Account } from "@/lib/db"
 import { format, formatDistanceToNow } from "date-fns"
-import { getSyncStatus, syncNow, pullFromPartner, clearLocalDataAndResync, type SyncStatus } from "@/lib/supabase/sync"
+import { getSyncStatus, getPendingPushCount, syncNow, pullFromPartner, clearLocalDataAndResync, scheduleSync, type SyncStatus } from "@/lib/supabase/sync"
 
 const defaultBudgets = {
   gas: 150,
@@ -27,10 +27,14 @@ export default function SettingsPage() {
   const [isResyncing, setIsResyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
 
-  // Load sync status
-  useEffect(() => {
+  const loadSyncStatus = async () => {
     const status = getSyncStatus()
-    setSyncStatus(status)
+    const pending = await getPendingPushCount()
+    setSyncStatus({ ...status, pendingCount: pending })
+  }
+
+  useEffect(() => {
+    void loadSyncStatus()
   }, [])
 
   // Accounts + Wallet Balances
@@ -99,7 +103,7 @@ export default function SettingsPage() {
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
     // Soft-delete so these removals also propagate to Supabase/other devices.
     await softDeleteTransactionsWhere((t) => new Date(t.date) < ninetyDaysAgo)
-    void syncNow()
+    scheduleSync("clear-old")
   }
 
   // Full Resync — clears local synced data (transactions + receipts), resets the
@@ -120,7 +124,22 @@ export default function SettingsPage() {
       setSyncMessage("Resync failed - check console")
     } finally {
       setIsResyncing(false)
-      setSyncStatus(getSyncStatus())
+      await loadSyncStatus()
+      setTimeout(() => setSyncMessage(null), 4000)
+    }
+  }
+
+  const handleSyncNow = async () => {
+    setIsPushing(true)
+    setSyncMessage(null)
+    try {
+      const result = await syncNow()
+      setSyncMessage(result.ok ? "Sync complete" : `Sync failed: ${result.error}`)
+    } catch {
+      setSyncMessage("Sync failed - check console")
+    } finally {
+      setIsPushing(false)
+      await loadSyncStatus()
       setTimeout(() => setSyncMessage(null), 4000)
     }
   }
@@ -149,7 +168,7 @@ export default function SettingsPage() {
       setSyncMessage("Push failed - check console")
     } finally {
       setIsPushing(false)
-      setSyncStatus(getSyncStatus())
+      await loadSyncStatus()
       setTimeout(() => setSyncMessage(null), 4000)
     }
   }
@@ -167,7 +186,7 @@ export default function SettingsPage() {
       setSyncMessage("Pull failed - check console")
     } finally {
       setIsPulling(false)
-      setSyncStatus(getSyncStatus())
+      await loadSyncStatus()
       setTimeout(() => setSyncMessage(null), 4000)
     }
   }
@@ -297,6 +316,16 @@ export default function SettingsPage() {
                 </button>
               </div>
             </div>
+
+            {/* Sync Now */}
+            <button
+              onClick={handleSyncNow}
+              disabled={isPushing}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-card py-4 text-foreground font-semibold shadow-earth hover:bg-secondary active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-5 w-5 ${isPushing ? "animate-spin" : ""}`} />
+              {isPushing ? "SYNCING..." : "SYNC NOW"}
+            </button>
 
             {/* Full Resync */}
             <button

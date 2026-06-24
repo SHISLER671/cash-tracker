@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { X, Check, ArrowLeft, Upload } from "lucide-react"
 import { db, saveDraft, getDraft, clearDraft, softDeleteTransaction, type Account } from "@/lib/db"
-import { syncNow } from "@/lib/supabase/sync"
+import { scheduleSync } from "@/lib/supabase/sync"
 import { scanReceipt } from "@/lib/ocr"
 import { CategoryButtons } from "@/components/category-buttons"
 
@@ -243,7 +243,7 @@ function TransactionPageContent() {
 
       // Push the new transaction to Supabase right away (and pull anything new)
       // so it reaches your other devices without needing to open Settings.
-      void syncNow()
+      scheduleSync("transaction-save")
 
       if (navigator.vibrate) navigator.vibrate(50)
 
@@ -266,7 +266,7 @@ function TransactionPageContent() {
       // Soft-delete so the undo also clears the row from Supabase if it already
       // pushed (a tombstone is recorded + synced), instead of leaving an orphan.
       await softDeleteTransaction(lastTransactionId)
-      void syncNow()
+      scheduleSync("transaction-undo")
       setShowUndo(false)
     }
   }

@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
 import {
   db,
   genUuid,
@@ -6,43 +5,55 @@ import {
   clearSyncedLocalData,
   getUnsyncedTombstones,
   type Transaction,
-} from '@/lib/db'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-// Only create the client when both env vars exist. This prevents the entire
-// app from crashing at import time if the keys are missing or not yet injected.
-export const supabase =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null
-
-if (!supabase) {
-  console.warn("[sync] Supabase env vars missing — sync features are disabled.")
-}
+} from "@/lib/db"
+import { supabase } from "./client"
+import type { SharedTransactionRow } from "./types"
 
 // Incremental pull cursor. Keyed on the server's `updated_at` (bumped by a DB
 // trigger on every insert/update), so edits AND deletes are caught — not just
-// new rows. New key name (V3) so the first run after this change does a full
-// re-scan rather than trusting the old created_at-based cursor.
+// new rows.
 const CURSOR_KEY = "syncCursorV3"
 
-// ---------------------------------------------------------------------------
-// Logging helper — every sync log is tagged with the device id + timestamp so
-// multi-device duplicate/divergence issues are easy to trace across phones.
-// ---------------------------------------------------------------------------
+export type SyncState = "idle" | "syncing" | "synced" | "error" | "offline"
+
+export type SyncResult = {
+  ok: boolean
+  pushed: number
+  deleted: number
+  error?: string
+}
+
+export type SyncStatus = {
+  lastPushed: string | null
+  lastPulled: string | null
+  pendingCount: number
+}
+
+type SyncEvent =
+  | { type: "start" }
+  | { type: "complete"; result: SyncResult }
+  | { type: "error"; error: string }
+
+const syncListeners = new Set<(event: SyncEvent) => void>()
+
+export function subscribeSync(listener: (event: SyncEvent) => void): () => void {
+  syncListeners.add(listener)
+  return () => syncListeners.delete(listener)
+}
+
+function emitSync(event: SyncEvent) {
+  syncListeners.forEach((l) => l(event))
+}
+
 function log(...args: unknown[]) {
   const device = getDeviceId().slice(0, 8)
   console.log(`[v0][sync ${device} @ ${new Date().toISOString()}]`, ...args)
 }
 
-// Guards against concurrent syncs. autoSync fires on multiple page mounts (and
-// twice under React strict mode); without this lock two runs read the same
-// stale snapshot and both insert the same rows — a primary source of local
-// duplicates.
-let syncInFlight: Promise<void> | null = null
+let syncInFlight: Promise<SyncResult> | null = null
+let lastSyncError: string | null = null
 
-// Normalize a remote row's identifying fields for the legacy fallback match.
-function sameTransaction(local: Transaction, remote: any): boolean {
+function sameTransaction(local: Transaction, remote: SharedTransactionRow): boolean {
   const localDay = local.date.toISOString().split("T")[0]
   const remoteDay = new Date(remote.date).toISOString().split("T")[0]
   return (
@@ -54,50 +65,36 @@ function sameTransaction(local: Transaction, remote: any): boolean {
   )
 }
 
-// ---------------------------------------------------------------------------
-// PUSH inserts/updates — idempotent upsert keyed on the stable uid (== Supabase
-// row id). Pushing the same record twice updates the same row instead of
-// creating a duplicate. Every unsynced local row is pushed (NOT just ones with
-// an accountId — that old filter silently dropped capture/receipt rows and was
-// a primary reason Supabase ended up with fewer rows than the device).
-// ---------------------------------------------------------------------------
-export async function pushToPartner(opts: { force?: boolean } = {}) {
-  if (!supabase) return
+export async function pushToPartner(opts: { force?: boolean } = {}): Promise<number> {
+  if (!supabase) return 0
 
   const deviceId = getDeviceId()
   const source = await db.transactions.toArray()
-  // Normal sync pushes only unsynced rows (efficient). `force` re-upserts every
-  // local row regardless of the synced flag — used by the manual "Share" button
-  // to reconcile rows that were wrongly marked synced and never reached the
-  // server (the cause of "my phone has more rows than Supabase"). Idempotent.
   const toPush = source.filter((t) => Boolean(t.id) && (opts.force || !t.synced))
   log(`push: ${toPush.length} row(s)${opts.force ? " (force)" : " unsynced"}`)
 
+  let pushed = 0
   for (const t of toPush) {
-    // Guarantee a stable uid before pushing so local + remote share identity.
     const uid = t.uid ?? genUuid()
     if (!t.uid) {
       await db.transactions.update(t.id as number, { uid })
     }
 
-    const { error } = await supabase
-      .from("shared_transactions")
-      .upsert(
-        {
-          id: uid, // shared_transactions.id is a uuid — supplying it makes upsert idempotent
-          date: t.date.toISOString(),
-          amount: t.amount,
-          merchant: t.merchant || null,
-          category: t.category,
-          type: t.type,
-          note: t.note || null,
-          account_id: t.accountId ?? null,
-          device_id: deviceId,
-          deleted: false,
-          // updated_at is maintained server-side by a trigger.
-        },
-        { onConflict: "id" },
-      )
+    const { error } = await supabase.from("shared_transactions").upsert(
+      {
+        id: uid,
+        date: t.date.toISOString(),
+        amount: t.amount,
+        merchant: t.merchant || null,
+        category: t.category,
+        type: t.type,
+        note: t.note || null,
+        account_id: t.accountId ?? null,
+        device_id: deviceId,
+        deleted: false,
+      },
+      { onConflict: "id" },
+    )
 
     if (!error) {
       await db.transactions.update(t.id as number, {
@@ -105,25 +102,24 @@ export async function pushToPartner(opts: { force?: boolean } = {}) {
         lastSynced: new Date().toISOString(),
       })
       localStorage.setItem("lastPushed", new Date().toISOString())
+      pushed++
       log(`push ok uid=${uid.slice(0, 8)} amount=${t.amount} ${t.category}`)
     } else {
       console.error("[v0][sync] push failed for transaction:", error, t)
+      throw new Error(error.message)
     }
   }
+  return pushed
 }
 
-// ---------------------------------------------------------------------------
-// PUSH deletions — propagate local soft-deletes to Supabase by flipping the
-// `deleted` tombstone flag on the remote row. Marking remote (rather than hard
-// DELETE) means OTHER devices learn about the deletion on their next pull.
-// ---------------------------------------------------------------------------
-export async function pushDeletions() {
-  if (!supabase) return
+export async function pushDeletions(): Promise<number> {
+  if (!supabase) return 0
 
   const tombstones = await getUnsyncedTombstones()
-  if (tombstones.length === 0) return
+  if (tombstones.length === 0) return 0
   log(`push deletions: ${tombstones.length} tombstone(s)`)
 
+  let deleted = 0
   for (const ts of tombstones) {
     const { error } = await supabase
       .from("shared_transactions")
@@ -132,21 +128,16 @@ export async function pushDeletions() {
 
     if (!error) {
       await db.tombstones.update(ts.uid, { synced: true })
+      deleted++
       log(`deletion synced uid=${ts.uid.slice(0, 8)}`)
     } else {
       console.error("[v0][sync] deletion push failed:", error, ts)
+      throw new Error(error.message)
     }
   }
+  return deleted
 }
 
-// ---------------------------------------------------------------------------
-// PULL — incremental + idempotent. Fetches rows whose updated_at is newer than
-// the cursor. Records are matched by uid (exact shared identity); legacy local
-// rows created before uid existed are healed by a one-time fuzzy match that
-// adopts the remote uid. Remote rows flagged deleted remove the local copy.
-// Rows we have a local tombstone for are never re-inserted. `full` ignores the
-// cursor and re-scans everything.
-// ---------------------------------------------------------------------------
 export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<void> {
   if (!supabase) return
 
@@ -158,19 +149,18 @@ export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<vo
     .select("*")
     .order("updated_at", { ascending: true })
 
-  // Incremental: only fetch rows changed after the last cursor. Pull is still
-  // idempotent (uid-keyed), so any overlap is harmless.
   if (cursor) query = query.gt("updated_at", cursor)
 
   const { data, error } = await query
 
   if (error || !data) {
     console.error("[v0][sync] pull error:", error)
-    return
+    throw new Error(error?.message ?? "Pull failed")
   }
 
-  log(`pull fetched ${data.length} remote row(s)`)
-  if (data.length === 0) {
+  const rows = data as SharedTransactionRow[]
+  log(`pull fetched ${rows.length} remote row(s)`)
+  if (rows.length === 0) {
     localStorage.setItem("lastPulled", new Date().toISOString())
     return
   }
@@ -190,16 +180,14 @@ export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<vo
       if (local.uid) byUid.set(local.uid, local)
     }
 
-    for (const remote of data) {
+    for (const remote of rows) {
       if (remote.updated_at && remote.updated_at > maxUpdatedAt) {
         maxUpdatedAt = remote.updated_at
       }
 
-      const remoteUid: string = remote.id
+      const remoteUid = remote.id
       const nowIso = new Date().toISOString()
 
-      // --- Remote deletion: remove the local copy and record a synced tombstone
-      //     so it can never resurrect from an earlier-pulled snapshot. ---
       if (remote.deleted) {
         const local = byUid.get(remoteUid)
         if (local) {
@@ -211,11 +199,7 @@ export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<vo
         continue
       }
 
-      // --- We deleted this locally (deletion pending or already pushed): do not
-      //     resurrect it. pushDeletions() will flip the remote flag. ---
-      if (tombstoneUids.has(remoteUid)) {
-        continue
-      }
+      if (tombstoneUids.has(remoteUid)) continue
 
       const mapped: Transaction = {
         uid: remoteUid,
@@ -232,8 +216,6 @@ export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<vo
         accountType: "cash",
       }
 
-      // 1. Exact identity match by uid → update in place (idempotent). This is
-      //    also how EDITS made on another device land here.
       const uidMatch = byUid.get(remoteUid)
       if (uidMatch) {
         await db.transactions.update(uidMatch.id!, { ...mapped, id: uidMatch.id })
@@ -241,8 +223,6 @@ export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<vo
         continue
       }
 
-      // 2. Legacy heal: adopt remote uid onto a pre-uid local row that looks
-      //    like the same transaction, so we don't create a duplicate.
       const legacy = existing.find(
         (l) =>
           l.id !== undefined &&
@@ -258,7 +238,6 @@ export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<vo
         continue
       }
 
-      // 3. Genuinely new remote row → insert once.
       const newId = (await db.transactions.add(mapped)) as number
       byUid.set(remoteUid, { ...mapped, id: newId })
       inserted++
@@ -270,42 +249,51 @@ export async function pullFromPartner(opts: { full?: boolean } = {}): Promise<vo
   log(`pull done: inserted=${inserted} updated=${updated} healed=${healed} removed=${removed}`)
 }
 
-// ---------------------------------------------------------------------------
-// SYNC NOW — the single entry point for a full bidirectional sync. Order
-// matters: push local inserts/edits and deletions FIRST so the server reflects
-// our state, then pull to apply everyone else's changes. Guarded by a lock so
-// concurrent callers coalesce onto one run.
-// ---------------------------------------------------------------------------
-export async function syncNow(opts: { full?: boolean; force?: boolean } = {}): Promise<void> {
-  if (!supabase) return
+export async function syncNow(opts: { full?: boolean; force?: boolean } = {}): Promise<SyncResult> {
+  if (!supabase) {
+    return { ok: false, pushed: 0, deleted: 0, error: "Supabase not configured" }
+  }
 
   if (syncInFlight) {
     log("syncNow: already in flight, awaiting existing run")
     return syncInFlight
   }
 
-  syncInFlight = (async () => {
+  emitSync({ type: "start" })
+
+  syncInFlight = (async (): Promise<SyncResult> => {
     try {
-      await pushToPartner({ force: opts.force })
-      await pushDeletions()
+      const pushed = await pushToPartner({ force: opts.force })
+      const deleted = await pushDeletions()
       await pullFromPartner({ full: opts.full })
+      lastSyncError = null
+      const result: SyncResult = { ok: true, pushed, deleted }
+      emitSync({ type: "complete", result })
+      return result
     } catch (e) {
+      const message = e instanceof Error ? e.message : "Sync failed"
+      lastSyncError = message
       console.error("[v0][sync] syncNow error:", e)
+      const result: SyncResult = { ok: false, pushed: 0, deleted: 0, error: message }
+      emitSync({ type: "error", error: message })
+      return result
     }
   })()
 
   try {
-    await syncInFlight
+    return await syncInFlight
   } finally {
     syncInFlight = null
   }
 }
 
-// ---------------------------------------------------------------------------
-// FULL RESYNC — wipe local synced data + tombstones + cursor, then pull
-// everything fresh. Every remote (non-deleted) row is inserted exactly once
-// with its uuid, guaranteeing a duplicate-free local DB that matches Supabase.
-// ---------------------------------------------------------------------------
+/** Fire-and-forget sync after a local mutation. Never blocks UI. */
+export function scheduleSync(reason?: string): void {
+  void syncNow().catch((e) =>
+    console.error("[v0][sync] scheduled sync failed:", reason, e),
+  )
+}
+
 export async function clearLocalDataAndResync(): Promise<void> {
   log("full resync: clearing local synced data")
   await clearSyncedLocalData()
@@ -313,10 +301,13 @@ export async function clearLocalDataAndResync(): Promise<void> {
   log("full resync: complete")
 }
 
-export type SyncStatus = {
-  lastPushed: string | null
-  lastPulled: string | null
-  pendingCount: number
+export async function getPendingPushCount(): Promise<number> {
+  const [transactions, tombstones] = await Promise.all([
+    db.transactions.toArray(),
+    getUnsyncedTombstones(),
+  ])
+  const unsyncedTx = transactions.filter((t) => t.synced !== true).length
+  return unsyncedTx + tombstones.length
 }
 
 export function getSyncStatus(): SyncStatus {
@@ -327,9 +318,10 @@ export function getSyncStatus(): SyncStatus {
   }
 }
 
-// Called on app/page mounts. Now does a full bidirectional sync (push + pull)
-// rather than a pull-only, so locally-created rows reliably reach Supabase even
-// if the user never visits Settings.
-export async function autoPullIfNeeded() {
+export function getLastSyncError(): string | null {
+  return lastSyncError
+}
+
+export async function autoPullIfNeeded(): Promise<void> {
   await syncNow()
 }

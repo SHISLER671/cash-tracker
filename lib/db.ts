@@ -167,13 +167,29 @@ export const addReceiptToInbox = async (receipt: Omit<Receipt, 'id' | 'createdAt
 }
 
 export const markReceiptProcessed = async (id: number, category: string) => {
-  return await db.receipts.update(id, { processed: 1, category })
+  const receipt = await db.receipts.get(id)
+  if (!receipt) return
+
+  await db.transaction("rw", db.transactions, db.receipts, async () => {
+    if (receipt.amount && receipt.amount > 0) {
+      await db.transactions.add({
+        date: receipt.createdAt,
+        category,
+        type: "out",
+        amount: receipt.amount,
+        merchant: receipt.merchant || undefined,
+        note: "Receipt scan",
+        synced: false,
+      })
+    }
+    await db.receipts.update(id, { processed: 1, category })
+  })
 }
 
 export const bulkMarkReceiptsProcessed = async (ids: number[], category: string) => {
-  return await db.receipts.bulkUpdate(
-    ids.map(id => ({ key: id, changes: { processed: 1, category } }))
-  )
+  for (const id of ids) {
+    await markReceiptProcessed(id, category)
+  }
 }
 
 export const deleteReceipt = async (id: number) => await db.receipts.delete(id)

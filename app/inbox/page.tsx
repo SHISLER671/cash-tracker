@@ -7,6 +7,7 @@ import { ArrowLeft, Inbox, Trash2, Check, X } from "lucide-react"
 import { db, markReceiptProcessed, bulkMarkReceiptsProcessed, deleteReceipt, bulkDeleteReceipts, type Receipt, getAllPresets, addPresetIfNew } from "@/lib/db"
 import { formatDistanceToNow } from "date-fns"
 import EditTransactionModal from "@/components/EditTransactionModal"
+import { scheduleSync } from "@/lib/supabase/sync"
 
 export default function InboxPage() {
   const router = useRouter()
@@ -51,6 +52,7 @@ export default function InboxPage() {
     setIsProcessing(true)
     await bulkMarkReceiptsProcessed(Array.from(selectedIds), category)
     await addPresetIfNew(category) // save as preset
+    scheduleSync("inbox-bulk-categorize")
     setSelectedIds(new Set())
     setShowCategoryPicker(false)
     setIsProcessing(false)
@@ -68,6 +70,7 @@ export default function InboxPage() {
     setIsProcessing(true)
     await markReceiptProcessed(id, category)
     await addPresetIfNew(category)
+    scheduleSync("inbox-categorize")
     setIsProcessing(false)
   }
 

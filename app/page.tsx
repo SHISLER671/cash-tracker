@@ -2,16 +2,14 @@
 
 import Link from "next/link"
 import { useLiveQuery } from "dexie-react-hooks"
-import { useEffect } from "react"
 import { Settings, Clock, Inbox, BarChart3, TrendingUp, TrendingDown } from "lucide-react"
+import { SyncStatusBadge } from "@/components/sync-status-badge"
 import { db } from "@/lib/db"
 import { CashDisplay } from "@/components/cash-display"
 import { BudgetProgress } from "@/components/budget-progress"
 import { AddButton } from "@/components/add-button"
 import { EmptyState } from "@/components/empty-state"
 import { format } from "date-fns"
-import { autoPullIfNeeded } from "@/lib/supabase/sync"
-
 // Default budget limits
 const budgetLimits = {
   gas: 150,
@@ -22,11 +20,6 @@ const budgetLimits = {
 
 export default function Home() {
   const currentMonth = format(new Date(), "yyyy-MM")
-
-  // Auto-pull new transactions when the app opens
-  useEffect(() => {
-    autoPullIfNeeded()
-  }, [])
 
   // Get transaction count
   const transactionCount = useLiveQuery(async () => {
@@ -99,7 +92,10 @@ export default function Home() {
           >
             <Settings className="h-5 w-5" />
           </Link>
-          <h1 className="text-lg font-bold text-foreground">Cash Tracker</h1>
+          <div className="flex flex-col items-center gap-1">
+            <h1 className="text-lg font-bold text-foreground">Cash Tracker</h1>
+            <SyncStatusBadge />
+          </div>
           <div className="flex items-center gap-2">
             <Link
               href="/inbox"

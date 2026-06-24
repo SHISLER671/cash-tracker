@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { db, type Transaction, addPresetIfNew, getAllPresets, softDeleteTransaction } from "@/lib/db"
-import { syncNow } from "@/lib/supabase/sync"
+import { scheduleSync } from "@/lib/supabase/sync"
 import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
 
@@ -60,7 +60,7 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
     onClose()
 
     // Push the edit + pull anything new (idempotent, uid-keyed).
-    void syncNow()
+    scheduleSync("edit-save")
   }
 
   const handleDelete = async () => {
@@ -70,7 +70,7 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
     // pushes to Supabase (sets deleted=true), so the deletion propagates to
     // every device instead of the row re-appearing on the next pull.
     await softDeleteTransaction(form.id)
-    void syncNow()
+    scheduleSync("edit-delete")
 
     toast.error("Transaction deleted", {
       description: "This can be undone for 5 seconds",
@@ -83,7 +83,7 @@ export default function EditTransactionModal({ transaction, onClose, onSave }: P
           await db.transactions.add({ ...form, synced: false })
           toast.success("Transaction restored")
           onSave()
-          void syncNow()
+          scheduleSync("edit-restore")
         },
       },
       duration: 5000,
