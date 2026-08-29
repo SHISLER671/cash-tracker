@@ -1,15 +1,18 @@
 "use client"
 
+import { useEffect } from "react"
 import Link from "next/link"
 import { useLiveQuery } from "dexie-react-hooks"
 import { Settings, Clock, Inbox, BarChart3, TrendingUp, TrendingDown } from "lucide-react"
 import { SyncStatusBadge } from "@/components/sync-status-badge"
-import { db } from "@/lib/db"
+import { db, type Transaction } from "@/lib/db"
+import { isWalletMove, seedHouseholdWallets } from "@/lib/household"
 import { CashDisplay } from "@/components/cash-display"
 import { BudgetProgress } from "@/components/budget-progress"
 import { AddButton } from "@/components/add-button"
 import { EmptyState } from "@/components/empty-state"
-import { format } from "date-fns"
+import { WalletFlow } from "@/components/wallet-flow"
+import { format, startOfWeek } from "date-fns"
 // Default budget limits
 const budgetLimits = {
   gas: 150,
@@ -20,6 +23,10 @@ const budgetLimits = {
 
 export default function Home() {
   const currentMonth = format(new Date(), "yyyy-MM")
+
+  useEffect(() => {
+    void seedHouseholdWallets()
+  }, [])
 
   // Get transaction count
   const transactionCount = useLiveQuery(async () => {
@@ -45,7 +52,11 @@ export default function Home() {
     monthEnd.setMonth(monthEnd.getMonth() + 1)
 
     const monthlyTransactions = all.filter(
-      (t) => t.date >= monthStart && t.date < monthEnd && t.type === "out"
+      (t: Transaction) =>
+        t.date >= monthStart &&
+        t.date < monthEnd &&
+        t.type === "out" &&
+        !isWalletMove(t.note),
     )
 
     return {
@@ -63,13 +74,31 @@ export default function Home() {
     const monthEnd = new Date(monthStart)
     monthEnd.setMonth(monthEnd.getMonth() + 1)
 
-    const monthly = all.filter((t) => t.date >= monthStart && t.date < monthEnd)
+    const monthly = all.filter(
+      (t: Transaction) => t.date >= monthStart && t.date < monthEnd && !isWalletMove(t.note),
+    )
 
     return {
       income: monthly.filter((t) => t.type === "in").reduce((sum, t) => sum + t.amount, 0),
       spent: monthly.filter((t) => t.type === "out").reduce((sum, t) => sum + t.amount, 0),
     }
   }, [currentMonth])
+
+  const weekCashOut = useLiveQuery(async () => {
+    const all = await db.transactions.toArray()
+    const weekStart = startOfWeek(new Date())
+    const outgoing = all.filter(
+      (t: Transaction) =>
+        t.type === "out" && new Date(t.date) >= weekStart && !isWalletMove(t.note),
+    )
+    const sumFor = (name: string) =>
+      outgoing
+        .filter((t: Transaction) => (t.merchant || "").trim().toLowerCase() === name)
+        .reduce((sum: number, t: Transaction) => sum + t.amount, 0)
+    const pia = sumFor("pia")
+    const ryan = sumFor("ryan")
+    return { pia, ryan, total: pia + ryan }
+  }, [])
 
   const budgets = [
     { label: "Gas", spent: spending?.gas ?? 0, budget: budgetLimits.gas },
@@ -132,6 +161,33 @@ export default function Home() {
           <>
             {/* Cash Display */}
             <CashDisplay amount={cashOnHand ?? 0} />
+            <WalletFlow />
+
+            <div className="card-luxe mb-6 p-5">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                This week cash out
+              </h2>
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">Pia</span>
+                  <span className="mt-1 text-xl font-semibold tabular-nums text-expense">
+                    ${(weekCashOut?.pia ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">Ryan</span>
+                  <span className="mt-1 text-xl font-semibold tabular-nums text-expense">
+                    ${(weekCashOut?.ryan ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted-foreground">Total</span>
+                  <span className="mt-1 text-xl font-semibold tabular-nums text-foreground">
+                    ${(weekCashOut?.total ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            </div>
 
             {/* Quick Stats - this month */}
             <div className="mb-6 grid grid-cols-2 gap-4">

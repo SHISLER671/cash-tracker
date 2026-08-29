@@ -15,10 +15,10 @@ export function EmptyState() {
 
       <div className="text-center">
         <h2 className="mb-2 text-2xl font-bold text-foreground">
-          Welcome to Cash Tracker!
+          Cash only. Eight seconds.
         </h2>
         <p className="text-muted-foreground">
-          Tap + below to add your first transaction
+          Tap + · pick Pia or Ryan · amount · chip · save
         </p>
       </div>
 

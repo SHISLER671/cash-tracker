@@ -170,19 +170,23 @@ export const markReceiptProcessed = async (id: number, category: string) => {
   const receipt = await db.receipts.get(id)
   if (!receipt) return
 
+  const { getWho, whoLabel } = await import("./household")
+  const stampedMerchant = receipt.merchant?.trim() || whoLabel(getWho())
+  const stampedCategory = category || "other"
+
   await db.transaction("rw", db.transactions, db.receipts, async () => {
     if (receipt.amount && receipt.amount > 0) {
       await db.transactions.add({
         date: receipt.createdAt,
-        category,
+        category: stampedCategory,
         type: "out",
         amount: receipt.amount,
-        merchant: receipt.merchant || undefined,
-        note: "Receipt scan",
+        merchant: stampedMerchant,
+        note: "Receipt scan — categorize later",
         synced: false,
       })
     }
-    await db.receipts.update(id, { processed: 1, category })
+    await db.receipts.update(id, { processed: 1, category: stampedCategory })
   })
 }
 

@@ -4,8 +4,8 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft, Lock, Trash2, Upload, Download, Users, RefreshCw } from "lucide-react"
-import Link from "next/link"
 import { db, softDeleteTransactionsWhere, type Account } from "@/lib/db"
+import { getWho, setWho, getPin, setPin, isWalletMove, type Who } from "@/lib/household"
 import { format, formatDistanceToNow } from "date-fns"
 import { getSyncStatus, getPendingPushCount, syncNow, pullFromPartner, clearLocalDataAndResync, scheduleSync, type SyncStatus } from "@/lib/supabase/sync"
 
@@ -26,6 +26,8 @@ export default function SettingsPage() {
   const [isPulling, setIsPulling] = useState(false)
   const [isResyncing, setIsResyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [who, setWhoState] = useState<Who>("ryan")
+  const [pinValue, setPinValue] = useState("")
 
   const loadSyncStatus = async () => {
     const status = getSyncStatus()
@@ -35,6 +37,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     void loadSyncStatus()
+    setWhoState(getWho())
+    setPinValue(getPin())
   }, [])
 
   // Accounts + Wallet Balances
@@ -70,7 +74,7 @@ export default function SettingsPage() {
     const monthEnd = new Date(monthStart)
     monthEnd.setMonth(monthEnd.getMonth() + 1)
 
-    const monthly = all.filter(t => t.date >= monthStart && t.date < monthEnd && t.type === "out")
+    const monthly = all.filter(t => t.date >= monthStart && t.date < monthEnd && t.type === "out" && !isWalletMove(t.note))
 
     return {
       gas: monthly.filter(t => t.category === "gas").reduce((sum, t) => sum + t.amount, 0),
@@ -201,6 +205,54 @@ export default function SettingsPage() {
           <h1 className="text-lg font-bold text-foreground">SETTINGS</h1>
           <div className="w-11" />
         </header>
+
+        <section className="mt-6">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">This phone is</h2>
+          <div className="space-y-3 rounded-xl bg-card p-4 shadow-earth">
+            <div className="flex rounded-xl bg-secondary p-1">
+              {(["pia", "ryan"] as const).map((person) => (
+                <button
+                  key={person}
+                  type="button"
+                  onClick={() => {
+                    setWho(person)
+                    setWhoState(person)
+                  }}
+                  className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-all ${
+                    who === person
+                      ? "bg-gradient-to-br from-gold-light to-gold-dark text-primary-foreground shadow-earth"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {person === "pia" ? "Pia" : "Ryan"}
+                </button>
+              ))}
+            </div>
+            <div>
+              <label htmlFor="household-pin" className="mb-2 block text-sm font-medium text-foreground">
+                Optional 4-digit PIN
+              </label>
+              <input
+                id="household-pin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={pinValue}
+                placeholder="Blank = off"
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 4)
+                  setPinValue(digits)
+                  if (digits.length === 0 || digits.length === 4) {
+                    setPin(digits)
+                  }
+                }}
+                className="w-full rounded-xl border border-border bg-background px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">Leave blank to keep the app unlocked.</p>
+            </div>
+          </div>
+        </section>
 
         {/* Wallet Balances */}
         <section className="mt-6">
