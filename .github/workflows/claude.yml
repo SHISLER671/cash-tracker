@@ -42,4 +42,4 @@ jobs:
           claude_args: |
             --model claude-sonnet-5-5
             --max-turns 10
-            --allowedTools "Bash(pnpm install),Bash(pnpm ci),Bash(pnpm run build),Bash(pnpm run lint)"
+            --allowedTools "Bash(pnpm install),Bash(pnpm install --frozen-lockfile),Bash(pnpm run build),Bash(pnpm run lint)"
